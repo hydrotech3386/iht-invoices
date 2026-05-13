@@ -509,12 +509,39 @@
 
 <script>
 const STORAGE_KEY = 'hydrotech_invoices_v1';
-let session = null; // { username, role, salesman, uid }
-let commentsId = null;
+let session      = null;
+let commentsId   = null;
+let appSettings  = {};            // { telegramBotToken }
+let salesmanChatIds = {};         // { salesmanName: chatId }
 
 function canWrite() { return session && (session.role==='admin' || session.role==='account'); }
 function canEdit()  { return session && (session.role==='admin' || session.role==='account'); }
 function canPay()   { return session && (session.role==='admin' || session.role==='account'); }
+
+// ---- Telegram ----
+function rebuildChatIds(users) {
+  salesmanChatIds = {};
+  Object.values(users).forEach(u => {
+    if (u.salesman && u.telegramChatId) salesmanChatIds[u.salesman] = String(u.telegramChatId);
+  });
+}
+async function sendTelegramMsg(chatId, text) {
+  const token = appSettings.telegramBotToken;
+  if (!token || !chatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' })
+    });
+  } catch(e) { console.warn('Telegram notification failed:', e); }
+}
+async function saveBotToken() {
+  const token = document.getElementById('botTokenInput').value.trim();
+  appSettings.telegramBotToken = token;
+  await firebase.database().ref('appSettings').update({ telegramBotToken: token || null });
+  alert('Bot token saved.');
+}
 
 // ---- Auth ----
 async function sha256(str) {
@@ -638,6 +665,11 @@ function applyRoleToUI() {
 function onLoggedIn() {
   applyRoleToUI();
   if (!fbReady) { renderSalesmanFilter(); renderMonthFilter(); renderSummary(); renderList(); return; }
+  // Load Telegram settings and chat ID map
+  firebase.database().ref('appSettings').once('value').then(snap => {
+    if (snap.val()) Object.assign(appSettings, snap.val());
+  });
+  usersRef.once('value').then(snap => { rebuildChatIds(snap.val() || {}); });
   setSyncStatus('syncing');
   fbRef.on('value', snapshot => {
     const fbData = snapshot.val();
@@ -1197,6 +1229,21 @@ function addPayment() {
   document.getElementById('fPayNote').value='';
   renderPayList(inv);
   persistState(); renderSummary(); renderList();
+  // Telegram notification to salesman
+  const chatId = salesmanChatIds[inv.salesman];
+  if (chatId) {
+    const bal = Math.max(0, tp - paid);
+    const msg =
+      `💰 <b>Payment Received</b>\n\n` +
+      `Invoice: <b>${inv.invoiceNo||'—'}</b>\n` +
+      `Customer: ${inv.customer||'—'}\n` +
+      `Payment: <b>${fmtRM(amount)}</b>\n` +
+      (note ? `Note: ${note}\n` : '') +
+      (paid >= tp
+        ? `Status: ✅ <b>Fully Paid</b>`
+        : `Balance Remaining: <b>${fmtRM(bal)}</b>`);
+    sendTelegramMsg(chatId, msg);
+  }
 }
 function deletePayment(invId, idx) {
   const inv = state.invoices.find(i => i.id===invId);
@@ -1332,7 +1379,18 @@ function renderUserMgmt() {
     </tr>`;
   }).join('');
 
-  content.innerHTML = `<table class="user-table">
+  const botSection = session.role === 'admin' ? `
+    <div style="margin-bottom:16px;padding:12px;background:#0f3460;border-radius:8px;border:1px solid #1a3a5c">
+      <div style="font-size:11px;color:#aaa;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🤖 Telegram Bot Token</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="text" id="botTokenInput" placeholder="Paste token from @BotFather"
+          value="${appSettings.telegramBotToken||''}"
+          style="flex:1;min-width:180px;background:#1a1a2e;border:1px solid #333;color:#fff;border-radius:6px;padding:7px 10px;font-size:13px">
+        <button onclick="saveBotToken()" style="background:#27ae60;border:none;color:#fff;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap">Save Token</button>
+      </div>
+    </div>` : '';
+
+  content.innerHTML = botSection + `<table class="user-table">
     <thead><tr><th>Username</th><th>Role</th><th>Salesman</th><th>Telegram ID</th><th>Created</th><th></th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
@@ -1353,6 +1411,7 @@ async function activateUser(fuid) {
   usersCache[fuid].salesman = salesman;
   usersCache[fuid].telegramChatId = telegramChatId;
   await usersRef.child(fuid).update({ role, salesman: salesman||null, telegramChatId: telegramChatId||null });
+  rebuildChatIds(usersCache);
   renderUserMgmt();
 }
 
@@ -1365,6 +1424,7 @@ async function saveUserRole(fuid) {
   usersCache[fuid].salesman = salesman;
   usersCache[fuid].telegramChatId = telegramChatId;
   await usersRef.child(fuid).update({ role, salesman: salesman||null, telegramChatId: telegramChatId||null });
+  rebuildChatIds(usersCache);
   renderUserMgmt();
 }
 

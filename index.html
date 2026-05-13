@@ -358,19 +358,9 @@
     </div>
 
     <div class="section-divider">Amount</div>
-    <div class="form-3col">
-      <div class="form-row">
-        <label>Amount Excl. SST (RM) *</label>
-        <input type="text" inputmode="decimal" id="fAmount" placeholder="0.00" oninput="formatAmountInput(this)">
-      </div>
-      <div class="form-row">
-        <label>SST (RM)</label>
-        <input type="text" inputmode="decimal" id="fSST" placeholder="0.00" oninput="formatAmountInput(this)">
-      </div>
-      <div class="form-row">
-        <label>Total Payable (RM)</label>
-        <input type="text" id="fTotalPreview" placeholder="0.00" readonly style="opacity:.6;cursor:default">
-      </div>
+    <div class="form-row">
+      <label>Total Amount (RM) *</label>
+      <input type="text" inputmode="decimal" id="fAmount" placeholder="0.00" oninput="formatAmountInput(this)">
     </div>
 
     <div class="section-divider">Agent</div>
@@ -730,12 +720,6 @@ function formatNumber(n) {
   return parts.join('.');
 }
 
-function updateTotalPreview() {
-  const total = parseAmountField('fAmount') + parseAmountField('fSST');
-  const parts = total.toFixed(2).split('.');
-  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  document.getElementById('fTotalPreview').value = parts.join('.');
-}
 
 // ---- Summary cards ----
 function renderSummary() {
@@ -925,10 +909,8 @@ function openInvoiceModal(id) {
     document.getElementById('fCustomer').value = inv.customer||'';
     document.getElementById('fContact').value = inv.contact||'';
     document.getElementById('fAmount').value = inv.amount ? formatNumber(inv.amount) : '';
-    document.getElementById('fSST').value = inv.sst ? formatNumber(inv.sst) : '';
     document.getElementById('fNotes').value = inv.notes||'';
     renderSalesmanChips(inv.salesman||'');
-    updateTotalPreview();
   } else {
     document.getElementById('invoiceModalTitle').textContent = 'Add Invoice';
     document.getElementById('fInvNo').value = '';
@@ -938,11 +920,9 @@ function openInvoiceModal(id) {
     document.getElementById('fCustomer').value = '';
     document.getElementById('fContact').value = '';
     document.getElementById('fAmount').value = '';
-    document.getElementById('fSST').value = '';
     document.getElementById('fNotes').value = '';
     renderSalesmanChips('');
   }
-  updateTotalPreview();
   document.getElementById('invoiceModalBg').classList.add('open');
   setTimeout(() => document.getElementById('fInvNo').focus(), 100);
 }
@@ -966,7 +946,7 @@ function saveInvoice() {
     customer,
     contact: document.getElementById('fContact').value.trim(),
     amount,
-    sst: parseAmountField('fSST'),
+    sst: 0,
     salesman: getSelectedSalesman(),
     notes: document.getElementById('fNotes').value.trim(),
     updatedAt: Date.now()
@@ -1081,11 +1061,8 @@ function renderPayList(inv) {
         </div>`).join('')
     : '<div class="pay-empty">No payments recorded yet.</div>';
 
-  const hasSst = (inv.sst||0)>0;
   document.getElementById('balBox').innerHTML = `
-    ${hasSst?`<div class="bal-line"><span>Excl. SST</span><span>${fmtRM(inv.amount)}</span></div>
-    <div class="bal-line"><span>SST</span><span>${fmtRM(inv.sst)}</span></div>`:''}
-    <div class="bal-line"><span>Total Payable</span><span>${fmtRM(tp)}</span></div>
+    <div class="bal-line"><span>Total Amount</span><span>${fmtRM(tp)}</span></div>
     <div class="bal-line"><span>Total Paid</span><span style="color:#5dfc8d">${fmtRM(paid)}</span></div>
     <div class="bal-line"><span>Balance Due</span><span class="${bal<=0?'settled':'due'}">${fmtRM(Math.max(0,bal))}</span></div>`;
 }

@@ -1,0 +1,19 @@
+name: Telegram Invoice Notifications
+
+on:
+  schedule:
+    - cron: '0 1 * * *'  # 9:00 AM Malaysia time (UTC+8 = 1:00 AM UTC)
+  workflow_dispatch:       # Allow manual trigger from GitHub Actions tab
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Send Telegram notifications
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          FIREBASE_DB_SECRET: ${{ secrets.FIREBASE_DB_SECRET }}
+        run: node .github/scripts/notify.js

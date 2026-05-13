@@ -1300,7 +1300,7 @@ function init() {
       } catch(e) { session = null; }
     }
     showLoginScreen();
-  }).catch(() => { setSyncStatus('offline'); showLoginScreen(); });
+  }).catch(err => { console.error('Firebase auth failed:', err); setSyncStatus('offline'); showLoginScreen(); });
 }
 
 document.addEventListener('keydown', e => {

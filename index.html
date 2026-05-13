@@ -1198,7 +1198,7 @@ async function openUserMgmt() {
     usersCache = snap.val() || {};
     renderUserMgmt();
   } catch(e) {
-    document.getElementById('userMgmtContent').innerHTML = '<div style="color:#e94560;text-align:center;padding:24px">Failed to load users.</div>';
+    document.getElementById('userMgmtContent').innerHTML = `<div style="color:#e94560;text-align:center;padding:24px">Failed to load users: ${e.message}</div>`;
   }
 }
 

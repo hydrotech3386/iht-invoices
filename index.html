@@ -478,7 +478,7 @@ async function sha256(str) {
 function showPanel(name) {
   document.querySelectorAll('.auth-panel').forEach(p =>
     p.classList.toggle('active', p.id === 'panel-'+name));
-  const focus = { login:'loginUser', register:'regUser' }[name];
+  const focus = { login:'loginEmail', register:'regName' }[name];
   if (focus) setTimeout(() => document.getElementById(focus).focus(), 80);
 }
 
@@ -707,8 +707,6 @@ function formatAmountInput(input) {
   const commasAfter = (input.value.slice(0, cursorBefore).match(/,/g)||[]).length;
   const newPos = Math.max(0, cursorBefore + commasAfter - commasBefore);
   input.setSelectionRange(newPos, newPos);
-
-  updateTotalPreview();
 }
 
 function parseAmountField(id) {
@@ -1247,7 +1245,7 @@ async function saveUserRole(fuid) {
 
 async function deleteUser(fuid) {
   const u = usersCache[fuid];
-  if (!confirm(`Remove user "${u.username}"? They will need to re-register.`)) return;
+  if (!confirm(`Remove user "${u.name||u.email}"? They will need to re-register.`)) return;
   delete usersCache[fuid];
   await usersRef.child(fuid).remove();
   renderUserMgmt();

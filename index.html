@@ -477,8 +477,21 @@ function canPay()   { return session && (session.role==='admin' || session.role=
 
 // ---- Auth ----
 async function sha256(str) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  if (crypto && crypto.subtle) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  }
+  // Fallback: pure-JS hash for non-HTTPS (local file) contexts
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = (Math.imul(h, 33) ^ str.charCodeAt(i)) >>> 0;
+  // Stretch with multiple rounds to make it harder to brute-force
+  let s = h.toString(16);
+  for (let r = 0; r < 1000; r++) {
+    let x = 5381;
+    for (let i = 0; i < s.length; i++) x = (Math.imul(x, 33) ^ s.charCodeAt(i)) >>> 0;
+    s = x.toString(16) + str.length.toString(16);
+  }
+  return s.padStart(16,'0');
 }
 
 function showPanel(name) {
@@ -519,7 +532,7 @@ async function loginAsync() {
     sessionStorage.setItem('iht_session', JSON.stringify(session));
     document.getElementById('authOverlay').classList.remove('open');
     onLoggedIn();
-  } catch(err) { errEl.textContent = 'Login error. Check connection.'; console.error(err); }
+  } catch(err) { errEl.textContent = 'Login error: ' + err.message; console.error(err); }
 }
 
 async function registerAsync() {
@@ -554,7 +567,7 @@ async function registerAsync() {
       document.getElementById('regPass').value = '';
       document.getElementById('regConfirm').value = '';
     }
-  } catch(err) { errEl.textContent = 'Registration error. Check connection.'; console.error(err); }
+  } catch(err) { errEl.textContent = 'Registration error: ' + err.message; console.error(err); }
 }
 
 function logout() {

@@ -1222,7 +1222,7 @@ function renderCommission() {
     gAmt+=d.amt; gSst+=d.sst; gCount+=d.invs.length;
     const invList = d.invs.map(inv => {
       const s=computeStatus(inv);
-      return `<div style="font-size:11px;color:#aaa;margin-bottom:3px">${inv.invoiceNo||'—'} — ${inv.customer||'—'} <span class="status-badge ${s}" style="font-size:9px;padding:1px 5px">${statusLabel(s)}</span> <span style="color:#fff;margin-left:4px">${fmtRM(totalPayable(inv))}</span></div>`;
+      return `<div style="font-size:11px;color:#aaa;margin-bottom:3px">${inv.invoiceNo||'—'} — ${inv.customer||'—'} <span class="status-badge ${s}" style="font-size:9px;padding:1px 5px">${statusLabel(s)}</span> <span style="color:#fff;margin-left:4px;white-space:nowrap">${fmtRM(totalPayable(inv))}</span></div>`;
     }).join('');
     return `<tr>
       <td class="comm-sm">${sm}<div style="font-weight:400;margin-top:6px">${invList}</div></td>

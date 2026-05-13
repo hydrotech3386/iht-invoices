@@ -313,6 +313,7 @@
   <button class="btn-usermgmt btn-backup" onclick="openUserMgmt()">👥 Users</button>
   <button class="btn-backup" onclick="exportBackup()">⬇ Backup</button>
   <button class="btn-backup" onclick="importBackup()" style="background:#6c3483">⬆ Restore</button>
+  <button class="btn-backup" onclick="mergeBackup()" style="background:#1a6fa8">⬆ Merge</button>
 </div>
 
 <div class="inv-table-wrap" id="invoiceList"></div>
@@ -1272,6 +1273,48 @@ function importBackup() {
         persistState(); renderSalesmanFilter(); renderMonthFilter(); renderSummary(); renderList();
         alert('Backup restored successfully.');
       } catch(err) { alert('Restore failed: '+err.message); }
+    };
+    r.readAsText(f);
+  };
+  inp.click();
+}
+
+function mergeBackup() {
+  const inp = document.createElement('input');
+  inp.type='file'; inp.accept='.json';
+  inp.onchange = e => {
+    const f=e.target.files[0]; if(!f) return;
+    const r=new FileReader();
+    r.onload = ev => {
+      try {
+        const imported = JSON.parse(ev.target.result);
+        if (!imported.invoices) { alert('Invalid backup file.'); return; }
+        const incoming = Array.isArray(imported.invoices)
+          ? imported.invoices
+          : Object.values(imported.invoices);
+        const existingIds = new Set(state.invoices.map(i => i.id));
+        const existingNos = new Set(state.invoices.map(i => (i.invoiceNo||'').toUpperCase()));
+        let added = 0, skipped = 0;
+        incoming.forEach(inv => {
+          if (!Array.isArray(inv.payments)) {
+            inv.payments = (inv.payments && typeof inv.payments==='object') ? Object.values(inv.payments) : [];
+          }
+          if (existingIds.has(inv.id) || existingNos.has((inv.invoiceNo||'').toUpperCase())) {
+            skipped++;
+          } else {
+            state.invoices.push(inv);
+            existingIds.add(inv.id);
+            existingNos.add((inv.invoiceNo||'').toUpperCase());
+            added++;
+          }
+        });
+        // Merge salesmen list
+        if (Array.isArray(imported.salesmen)) {
+          imported.salesmen.forEach(s => { if (s && !state.salesmen.includes(s)) state.salesmen.push(s); });
+        }
+        persistState(); renderSalesmanFilter(); renderMonthFilter(); renderSummary(); renderList();
+        alert(`Merge complete.\nAdded: ${added} invoice(s)\nSkipped (already exist): ${skipped}`);
+      } catch(err) { alert('Merge failed: '+err.message); }
     };
     r.readAsText(f);
   };

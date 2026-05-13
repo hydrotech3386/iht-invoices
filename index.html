@@ -105,6 +105,10 @@
   .btn-rd{background:#1a2a4a;color:#aaa}
   .btn-rd:hover{background:#922b21;color:#fff}
   .month-group-row td{background:#0a1628;color:#555;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:5px 10px;border-bottom:none}
+  .inv-table th:last-child,.inv-table td.td-actions{position:sticky;right:0;background:#1a1a2e;box-shadow:-3px 0 6px rgba(0,0,0,.5)}
+  .inv-table thead th:last-child{background:#1a1a2e;z-index:2}
+  .inv-table tbody tr:hover td.td-actions{background:#111d3a}
+  .days-pill.due{background:#2d2400;color:#f1c40f}
 
   /* Auth */
   .auth-overlay{position:fixed;inset:0;background:#1a1a2e;z-index:999;display:flex;align-items:center;justify-content:center;visibility:hidden;opacity:0;transition:opacity .3s}
@@ -204,8 +208,26 @@
   .month-sel-row select{background:#0f3460;border:1px solid #333;color:#fff;border-radius:6px;padding:6px 10px;font-size:13px}
   .report-empty{color:#555;font-size:13px;padding:24px 0;text-align:center}
 
+  /* Mobile cards */
+  .inv-cards-wrap{padding:4px 0 24px}
+  .inv-month-label{color:#555;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:10px 14px 4px}
+  .inv-card{background:#16213e;border-left:3px solid transparent;border:1px solid #0f3460;border-left-width:3px;border-radius:8px;margin:0 10px 8px;padding:11px 12px}
+  .inv-card.status-unpaid{border-left-color:#2980b9}
+  .inv-card.status-partial{border-left-color:#e67e22}
+  .inv-card.status-paid{border-left-color:#27ae60;opacity:.65}
+  .inv-card-hd{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+  .inv-card-no{font-weight:700;color:#fff;font-size:14px;flex-shrink:0}
+  .inv-card-amt{margin-left:auto;font-weight:700;color:#fff;font-size:14px;white-space:nowrap}
+  .inv-card-cust{color:#e0e0e0;font-size:13px;margin-bottom:5px;font-weight:500;word-break:break-word}
+  .inv-card-meta{display:flex;align-items:center;gap:8px;font-size:12px;color:#aaa;flex-wrap:wrap;margin-bottom:6px}
+  .inv-card-meta .ic-agent{color:#4fc3f7;font-weight:600}
+  .inv-card-bal{color:#e94560;font-size:12px;font-weight:600;margin-bottom:8px}
+  .inv-card-acts{display:flex;gap:6px;margin-top:6px}
+  .inv-card-acts .btn-rp{flex:2;padding:9px 8px;font-size:13px}
+  .inv-card-acts .btn-re,.inv-card-acts .btn-rd{flex:1;padding:9px 8px;font-size:13px}
+
   /* Mobile */
-  @media(max-width:640px){
+  @media(max-width:768px){
     input,textarea,select{font-size:16px!important}
     html,body{height:100%}
     body{display:-webkit-flex;display:flex;-webkit-flex-direction:column;flex-direction:column}
@@ -225,6 +247,10 @@
     .modal-actions button{flex:1;padding:13px;font-size:14px;border-radius:10px}
     .form-2col,.form-3col{grid-template-columns:1fr}
     .month-sel-row select{font-size:15px!important}
+    .status-tabs{width:100%}
+    .filter-select{flex:1;min-width:80px}
+    header h1{display:none}
+    .user-name{display:none}
   }
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -351,7 +377,8 @@
     <div class="section-divider">Customer</div>
     <div class="form-row">
       <label>Customer Name *</label>
-      <input type="text" id="fCustomer" placeholder="e.g. Ipoh Water Pro Enterprise">
+      <input type="text" id="fCustomer" list="customerSuggestions" autocomplete="off" placeholder="e.g. Ipoh Water Pro Enterprise">
+      <datalist id="customerSuggestions"></datalist>
     </div>
     <div class="form-row">
       <label>Contact Number</label>
@@ -818,7 +845,7 @@ function renderList() {
     if (sort==='amount')    return totalPayable(b)-totalPayable(a);
     if (sort==='invoiceNo') return (b.invoiceNo||'').localeCompare(a.invoiceNo||'');
     if (sort==='dateAsc')   return (a.invoiceDate||'').localeCompare(b.invoiceDate||'');
-    return (b.invoiceDate||'').localeCompare(a.invoiceDate||''); // dateDesc default
+    return (b.invoiceDate||'').localeCompare(a.invoiceDate||'');
   });
 
   const el = document.getElementById('invoiceList');
@@ -830,6 +857,12 @@ function renderList() {
   const showPay = canPay();
   const showEdit = canEdit();
   const groupByMonth = sort === 'dateDesc' || sort === 'dateAsc';
+
+  if (window.innerWidth <= 768) {
+    el.innerHTML = buildCardsHTML(items, showPay, showEdit, groupByMonth);
+    return;
+  }
+
   let rows = '';
   let lastMonth = '';
 
@@ -839,18 +872,17 @@ function renderList() {
     const tp = totalPayable(inv);
     const bal = Math.max(0, tp - paid);
     const days = daysSince(inv.invoiceDate);
-    const dClass = days === null ? '' : days > 90 ? 'old' : days > 60 ? 'warn' : '';
+    const dClass = days === null ? '' : days >= 90 ? 'old' : days >= 60 ? 'warn' : days >= 30 ? 'due' : '';
     const daysPill = days !== null ? `<span class="days-pill ${dClass}">${days}d</span>` : '—';
     const balCell = s==='partial' ? fmtRM(bal) : '';
 
-    // Month group header (only when sorted by date)
     if (groupByMonth) {
       const month = (inv.invoiceDate||'').slice(0,7);
       if (month !== lastMonth && month) {
         lastMonth = month;
         const [y,mo] = month.split('-');
         const mLabel = new Date(y, mo-1, 1).toLocaleString('en',{month:'long',year:'numeric'});
-        rows += `<tr class="month-group-row"><td colspan="11">${mLabel}</td></tr>`;
+        rows += `<tr class="month-group-row"><td colspan="9">${mLabel}</td></tr>`;
       }
     }
 
@@ -861,13 +893,11 @@ function renderList() {
       : '';
 
     rows += `<tr class="status-${s}">
+      <td class="td-date">${fmtDate(inv.invoiceDate)}</td>
       <td class="td-invno">${inv.invoiceNo||'—'}</td>
       <td class="td-customer" title="${inv.customer||''}">${inv.customer||'—'}</td>
-      <td class="td-contact">${inv.contact||''}</td>
       <td class="td-po" title="${inv.projectRef||''}">${inv.projectRef||''}</td>
-      <td class="td-notes" title="${inv.notes||''}">${inv.notes||''}</td>
       <td class="td-agent">${inv.salesman||'—'}</td>
-      <td class="td-date">${fmtDate(inv.invoiceDate)}</td>
       <td class="td-days">${daysPill}</td>
       <td class="td-amount">${fmtRM(tp)}</td>
       <td class="td-bal">${balCell}</td>
@@ -877,13 +907,11 @@ function renderList() {
 
   el.innerHTML = `<table class="inv-table">
     <thead><tr>
+      <th>Date</th>
       <th>Invoice No</th>
       <th>Customer</th>
-      <th>Contact</th>
       <th>P/O</th>
-      <th>Description</th>
       <th>Agent</th>
-      <th>Date</th>
       <th style="text-align:center">Days</th>
       <th style="text-align:right">Amount</th>
       <th style="text-align:right">Balance</th>
@@ -893,10 +921,62 @@ function renderList() {
   </table>`;
 }
 
+function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
+  let html = '<div class="inv-cards-wrap">';
+  let lastMonth = '';
+  items.forEach(inv => {
+    const s = computeStatus(inv);
+    const paid = amountPaid(inv);
+    const tp = totalPayable(inv);
+    const bal = Math.max(0, tp - paid);
+    const days = daysSince(inv.invoiceDate);
+    const dClass = days === null ? '' : days >= 90 ? 'old' : days >= 60 ? 'warn' : days >= 30 ? 'due' : '';
+    const daysPill = days !== null ? `<span class="days-pill ${dClass}">${days}d</span>` : '';
+
+    if (groupByMonth) {
+      const month = (inv.invoiceDate||'').slice(0,7);
+      if (month !== lastMonth && month) {
+        lastMonth = month;
+        const [y,mo] = month.split('-');
+        html += `<div class="inv-month-label">${new Date(y,mo-1,1).toLocaleString('en',{month:'long',year:'numeric'})}</div>`;
+      }
+    }
+
+    const acts = (showPay || showEdit) ? `
+      <div class="inv-card-acts">
+        ${showPay ? `<button class="btn-rp" onclick="openPaymentModal('${inv.id}')">💰 Payment</button>` : ''}
+        ${showEdit ? `<button class="btn-re" onclick="openInvoiceModal('${inv.id}')">✏ Edit</button>
+        <button class="btn-rd" onclick="deleteInvoice('${inv.id}')">✕</button>` : ''}
+      </div>` : '';
+
+    html += `<div class="inv-card status-${s}">
+      <div class="inv-card-hd">
+        <span class="inv-card-no">${inv.invoiceNo||'—'}</span>
+        <span class="status-badge ${s}">${statusLabel(s)}</span>
+        <span class="inv-card-amt">${fmtRM(tp)}</span>
+      </div>
+      <div class="inv-card-cust">${inv.customer||'—'}</div>
+      <div class="inv-card-meta">
+        <span class="ic-agent">${inv.salesman||'—'}</span>
+        <span>${fmtDate(inv.invoiceDate)}</span>
+        ${daysPill}
+        ${inv.term && inv.term!=='C.O.D' ? `<span style="color:#666">${inv.term}</span>` : ''}
+      </div>
+      ${s==='partial' ? `<div class="inv-card-bal">Balance: ${fmtRM(bal)}</div>` : ''}
+      ${acts}
+    </div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
 // ---- Invoice Modal ----
 function openInvoiceModal(id) {
   editingId = id || null;
   document.getElementById('manageSalesmenPanel').style.display = 'none';
+  const dl = document.getElementById('customerSuggestions');
+  const names = [...new Set(state.invoices.map(i => i.customer).filter(Boolean))].sort((a,b) => a.localeCompare(b));
+  dl.innerHTML = names.map(n => `<option value="${n}">`).join('');
   if (id) {
     const inv = state.invoices.find(i => i.id===id);
     if (!inv) return;
@@ -1353,6 +1433,8 @@ document.addEventListener('keydown', e => {
     document.getElementById('userMgmtBg').classList.remove('open');
   }
 });
+let _rszT;
+window.addEventListener('resize', () => { clearTimeout(_rszT); _rszT = setTimeout(renderList, 150); });
 
 init();
 </script>

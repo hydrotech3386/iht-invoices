@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#16213e">
+<title>Invoice Tracker — Hydrotech</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',sans-serif;background:#1a1a2e;color:#e0e0e0;min-height:100vh}
+
+  header{background:#16213e;padding:12px 20px;padding-top:max(12px,calc(env(safe-area-inset-top)+8px));display:flex;align-items:center;gap:12px;border-bottom:2px solid #0f3460;flex-wrap:wrap}
+  header h1{font-size:18px;color:#e94560;font-weight:700;white-space:nowrap}
+  .sync-status{display:flex;align-items:center;gap:5px;font-size:11px;color:#aaa;white-space:nowrap}
+  .sync-dot{width:8px;height:8px;border-radius:50%;background:#555;flex-shrink:0}
+  .sync-dot.synced{background:#27ae60}
+  .sync-dot.syncing{background:#f39c12;animation:pulse .8s infinite}
+  .sync-dot.offline{background:#e94560}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  .search-box{flex:1;min-width:150px;max-width:300px;background:#0f3460;border:1px solid #333;color:#fff;border-radius:6px;padding:7px 12px;font-size:13px}
+  .search-box:focus{outline:none;border-color:#e94560}
+  .search-box::placeholder{color:#555}
+  .user-info{display:flex;align-items:center;gap:8px;margin-left:auto}
+  .role-badge{font-size:10px;font-weight:700;border-radius:4px;padding:2px 8px;letter-spacing:.5px;white-space:nowrap}
+  .role-badge.admin{background:#8e44ad;color:#fff}
+  .role-badge.account{background:#16a085;color:#fff}
+  .role-badge.salesman{background:#2980b9;color:#fff}
+  .user-name{font-size:12px;color:#aaa;white-space:nowrap}
+  .btn-logout{background:#1a1a2e;border:1px solid #333;color:#aaa;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap}
+  .btn-logout:hover{border-color:#e94560;color:#e94560}
+
+  .filter-bar{background:#16213e;padding:10px 20px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #0f3460;flex-wrap:wrap}
+  .status-tabs{display:flex;gap:4px;flex-wrap:wrap}
+  .status-tab{padding:5px 12px;border-radius:20px;border:1px solid #333;background:#1a1a2e;color:#aaa;cursor:pointer;font-size:12px;font-weight:600;transition:all .15s}
+  .status-tab[data-status="all"].active{background:#555;border-color:#555;color:#fff}
+  .status-tab[data-status="unpaid"].active{background:#2980b9;border-color:#2980b9;color:#fff}
+  .status-tab[data-status="partial"].active{background:#e67e22;border-color:#e67e22;color:#fff}
+  .status-tab[data-status="overdue"].active{background:#e94560;border-color:#e94560;color:#fff}
+  .status-tab[data-status="paid"].active{background:#27ae60;border-color:#27ae60;color:#fff}
+  .filter-select{background:#0f3460;border:1px solid #333;color:#fff;border-radius:6px;padding:5px 10px;font-size:12px}
+
+  .summary-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:16px 20px;background:#1a1a2e}
+  .summary-card{background:#16213e;border:1px solid #0f3460;border-radius:8px;padding:12px 16px}
+  .summary-card .card-label{font-size:11px;color:#aaa;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+  .summary-card .card-value{font-size:18px;font-weight:700;color:#fff}
+  .summary-card .card-count{font-size:11px;color:#555;margin-top:2px}
+  .summary-card.s-outstanding{border-color:#2980b9}
+  .summary-card.s-outstanding .card-value{color:#4fc3f7}
+  .summary-card.s-overdue{border-color:#e94560}
+  .summary-card.s-overdue .card-value{color:#e94560}
+  .summary-card.s-paid{border-color:#27ae60}
+  .summary-card.s-paid .card-value{color:#5dfc8d}
+  .summary-card.s-total{border-color:#f39c12}
+  .summary-card.s-total .card-value{color:#f39c12}
+
+  .toolbar{background:#16213e;padding:8px 20px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid #0f3460}
+  .toolbar button{padding:7px 14px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600}
+  .btn-add{background:#27ae60;color:#fff}
+  .btn-add:hover{background:#1e8449}
+  .btn-commission{background:#f39c12;color:#000}
+  .btn-commission:hover{background:#d68910}
+  .btn-backup{background:#8e44ad;color:#fff}
+  .btn-backup:hover{filter:brightness(1.15)}
+
+  .empty-list{color:#555;font-size:13px;padding:40px 0;text-align:center}
+
+  .status-badge{font-size:10px;font-weight:700;border-radius:4px;padding:2px 8px;letter-spacing:.5px;white-space:nowrap;flex-shrink:0}
+  .status-badge.unpaid{background:#1a3a5c;color:#4fc3f7;border:1px solid #2980b9}
+  .status-badge.partial{background:#3d2600;color:#f39c12;border:1px solid #e67e22}
+  .status-badge.paid{background:#1a3a1a;color:#5dfc8d;border:1px solid #27ae60}
+  .status-badge.overdue{background:#3d0010;color:#ff6b6b;border:1px solid #e94560}
+
+  /* Invoice table */
+  .inv-table-wrap{overflow-x:auto;padding:8px 16px 24px;max-width:980px;margin:0 auto}
+  .inv-table{width:100%;border-collapse:collapse;font-size:13px}
+  .inv-table th{color:#555;font-size:10px;text-transform:uppercase;letter-spacing:.5px;padding:7px 10px;border-bottom:2px solid #0f3460;white-space:nowrap;text-align:left;font-weight:600}
+  .inv-table td{padding:9px 10px;border-bottom:1px solid #0a1628;vertical-align:middle;white-space:nowrap}
+  .inv-table tbody tr:hover td{background:#111d3a}
+  .inv-table tbody tr.status-paid td{opacity:.6}
+  .inv-table tbody tr td:first-child{border-left:3px solid transparent}
+  .inv-table tbody tr.status-unpaid td:first-child{border-left:3px solid #2980b9}
+  .inv-table tbody tr.status-partial td:first-child{border-left:3px solid #e67e22}
+  .inv-table tbody tr.status-paid td:first-child{border-left:3px solid #27ae60}
+  .td-invno{font-weight:700;color:#fff;min-width:90px}
+  .td-customer{color:#e0e0e0;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+  .td-contact{color:#aaa;font-size:12px;max-width:110px;overflow:hidden;text-overflow:ellipsis}
+  .td-po{color:#666;font-size:11px;max-width:90px;overflow:hidden;text-overflow:ellipsis}
+  .td-notes{color:#666;font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis}
+  .td-agent{color:#4fc3f7}
+  .td-date{color:#aaa;min-width:80px}
+  .td-days{text-align:center;min-width:50px}
+  .days-pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#0f3460;color:#aaa}
+  .days-pill.warn{background:#3d2000;color:#f39c12}
+  .days-pill.old{background:#3d1000;color:#e74c3c}
+  .td-amount{text-align:right;font-weight:700;color:#fff;min-width:110px}
+  .td-bal{text-align:right;font-size:11px;color:#e94560;min-width:90px}
+  .td-actions{text-align:right;white-space:nowrap}
+  .td-actions button{border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600;padding:4px 9px;margin-left:3px}
+  .btn-rp{background:#2980b9;color:#fff}
+  .btn-rp:hover{background:#1a6fa8}
+  .btn-re{background:#1a2a4a;color:#aaa}
+  .btn-re:hover{background:#2980b9;color:#fff}
+  .btn-rd{background:#1a2a4a;color:#aaa}
+  .btn-rd:hover{background:#922b21;color:#fff}
+  .month-group-row td{background:#0a1628;color:#555;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:5px 10px;border-bottom:none}
+
+  /* Auth */
+  .auth-overlay{position:fixed;inset:0;background:#1a1a2e;z-index:999;display:flex;align-items:center;justify-content:center;visibility:hidden;opacity:0;transition:opacity .3s}
+  .auth-overlay.open{visibility:visible;opacity:1}
+  .auth-card{background:#16213e;border:1px solid #0f3460;border-radius:12px;padding:32px 28px;width:100%;max-width:360px}
+  .auth-panel{display:none}.auth-panel.active{display:block}
+  .auth-card h2{color:#e94560;font-size:18px;margin-bottom:4px;text-align:center}
+  .auth-sub{color:#888;font-size:13px;margin-bottom:20px;text-align:center}
+  .auth-field{margin-bottom:10px}
+  .auth-field label{font-size:11px;color:#777;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px}
+  .auth-input{width:100%;background:#0f3460;border:1px solid #333;color:#fff;border-radius:8px;padding:10px 14px;font-size:15px}
+  .auth-input:focus{outline:none;border-color:#e94560}
+  .auth-error{color:#e94560;font-size:12px;min-height:16px;margin:6px 0 4px}
+  .auth-msg{color:#27ae60;font-size:12px;min-height:16px;margin:6px 0 4px}
+  .auth-btn{width:100%;background:#e94560;border:none;color:#fff;border-radius:8px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;margin-top:6px}
+  .auth-btn:hover{background:#c0392b}
+  .auth-link{color:#666;font-size:12px;cursor:pointer;display:block;text-align:center;margin-top:14px}
+  .auth-link:hover{color:#aaa}
+  @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+  .shake{animation:shake .35s ease}
+
+  /* Role-based visibility */
+  body[data-role="salesman"] .btn-add { display:none }
+  body:not([data-role="admin"]) .btn-backup,
+  body:not([data-role="admin"]) .btn-usermgmt { display:none }
+  body[data-role="salesman"] .btn-commission { display:none }
+  body[data-role="salesman"] .td-actions { display:none }
+  body[data-role="salesman"] #salesmanFilter { display:none }
+
+  /* User management */
+  .user-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+  .user-table th{color:#555;font-size:10px;text-transform:uppercase;padding:6px 10px;border-bottom:1px solid #0f3460;text-align:left}
+  .user-table td{padding:9px 10px;border-bottom:1px solid #0a1628;vertical-align:middle}
+  .user-table tr:hover td{background:#111d3a}
+  .pending-badge{background:#3d2000;color:#f39c12;border:1px solid #e67e22;font-size:10px;font-weight:700;border-radius:4px;padding:2px 6px;display:inline-block;margin-bottom:4px}
+  .user-sel{background:#0f3460;border:1px solid #333;color:#fff;border-radius:4px;padding:4px 6px;font-size:12px}
+  .btn-activate{background:#27ae60;border:none;color:#fff;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:11px;font-weight:700}
+  .btn-del-user{background:none;border:none;color:#555;cursor:pointer;font-size:13px;margin-left:6px}
+  .btn-del-user:hover{color:#e94560}
+  .self-badge{font-size:10px;color:#4fc3f7;border:1px solid #2980b9;border-radius:4px;padding:1px 5px}
+
+  /* Modal */
+  .modal-bg{display:-webkit-flex;display:flex;position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.75);z-index:100;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;visibility:hidden;pointer-events:none;opacity:0;transition:opacity .2s}
+  .modal-bg.open{visibility:visible;pointer-events:auto;opacity:1}
+  .modal{background:#16213e;border:1px solid #0f3460;border-radius:10px;padding:24px;width:100%;max-width:580px;max-height:90vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .modal h2{font-size:15px;color:#e94560;margin-bottom:16px}
+  .form-row{margin-bottom:12px}
+  .form-row label{display:block;font-size:12px;color:#aaa;margin-bottom:4px}
+  .form-row input,.form-row textarea,.form-row select{width:100%;background:#0f3460;border:1px solid #333;color:#fff;border-radius:6px;padding:8px 10px;font-size:13px}
+  .form-row textarea{resize:vertical;min-height:60px;font-family:inherit}
+  .form-row input:focus,.form-row textarea:focus,.form-row select:focus{outline:none;border-color:#e94560}
+  .form-2col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .form-3col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+  .modal-actions button{padding:8px 18px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px}
+  .btn-confirm{background:#27ae60;color:#fff}
+  .btn-cancel{background:#555;color:#fff}
+  .section-divider{font-size:11px;color:#555;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px;padding-bottom:6px;border-bottom:1px solid #0f3460}
+
+  /* Salesman chips */
+  .chip-grid{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+  .sm-chip{display:flex;align-items:center;gap:5px;background:#0f3460;border:1px solid #333;border-radius:20px;padding:5px 10px;cursor:pointer;user-select:none;font-size:13px;transition:all .15s}
+  .sm-chip:hover{border-color:#e94560}
+  .sm-chip.checked{background:#e94560;border-color:#e94560;color:#fff;font-weight:700}
+  .sm-chip input{display:none}
+  .manage-link{margin-top:8px;font-size:11px;color:#666;cursor:pointer;text-decoration:underline}
+  .manage-link:hover{color:#aaa}
+  .manage-add-row{display:flex;gap:6px;margin-top:8px;align-items:center}
+  .manage-add-row input{flex:1;background:#0f3460;border:1px solid #333;color:#fff;border-radius:6px;padding:6px 8px;font-size:12px}
+  .manage-add-row button{background:#27ae60;border:none;color:#fff;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px}
+  .remove-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .remove-chip{display:flex;align-items:center;gap:4px;background:#1a1a2e;border:1px solid #333;border-radius:12px;padding:3px 8px;font-size:11px;color:#aaa}
+  .remove-chip button{background:none;border:none;color:#e94560;cursor:pointer;font-size:12px;padding:0;line-height:1}
+
+  /* Payment modal */
+  .pay-list{display:flex;flex-direction:column;gap:8px;max-height:220px;overflow-y:auto;margin-bottom:10px}
+  .pay-item{background:#0f3460;border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center}
+  .pay-amount{font-size:14px;font-weight:700;color:#5dfc8d}
+  .pay-note{font-size:12px;color:#aaa;margin-top:2px}
+  .pay-date{font-size:11px;color:#555;text-align:right}
+  .pay-del{background:none;border:none;color:#555;cursor:pointer;font-size:12px;margin-top:4px;display:block;margin-left:auto}
+  .pay-del:hover{color:#e94560}
+  .pay-empty{color:#555;font-size:12px;text-align:center;padding:16px 0}
+  .bal-box{background:#0f3460;border-radius:8px;padding:10px 14px;margin-bottom:12px}
+  .bal-line{display:flex;justify-content:space-between;font-size:12px;color:#aaa;margin-bottom:4px}
+  .bal-line:last-child{margin-bottom:0;font-size:14px;font-weight:700;color:#fff;border-top:1px solid #1a1a2e;padding-top:6px;margin-top:6px}
+  .bal-line .due{color:#e94560}
+  .bal-line .settled{color:#5dfc8d}
+  .add-pay-title{font-size:11px;color:#aaa;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+
+  /* Commission report */
+  .comm-table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+  .comm-table th{background:#0f3460;padding:8px 10px;text-align:left;color:#aaa;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  .comm-table td{padding:8px 10px;border-bottom:1px solid #0f3460;vertical-align:top}
+  .comm-table tr:hover td{background:#1a1a2e}
+  .comm-sm{color:#5dfc8d;font-weight:700}
+  .month-sel-row{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .month-sel-row select{background:#0f3460;border:1px solid #333;color:#fff;border-radius:6px;padding:6px 10px;font-size:13px}
+  .report-empty{color:#555;font-size:13px;padding:24px 0;text-align:center}
+
+  /* Mobile */
+  @media(max-width:640px){
+    input,textarea,select{font-size:16px!important}
+    html,body{height:100%}
+    body{display:-webkit-flex;display:flex;-webkit-flex-direction:column;flex-direction:column}
+    header{padding:max(8px,calc(env(safe-area-inset-top)+4px)) 14px 8px;-webkit-flex-shrink:0;flex-shrink:0}
+    header h1{font-size:15px}
+    .search-box{max-width:none;flex:1}
+    .filter-bar{padding:8px 12px;-webkit-flex-shrink:0;flex-shrink:0}
+    .summary-cards{grid-template-columns:1fr 1fr;gap:8px;padding:10px 12px}
+    .summary-card .card-value{font-size:14px}
+    .toolbar{padding:8px 12px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;-webkit-flex-shrink:0;flex-shrink:0}
+    .toolbar::-webkit-scrollbar{display:none}
+    .toolbar button{white-space:nowrap;flex-shrink:0;padding:10px 12px;font-size:12px}
+    .inv-table-wrap{padding:10px 0;-webkit-flex:1;flex:1;overflow-y:auto;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:max(20px,calc(env(safe-area-inset-bottom)+16px))}
+    .card-grid{grid-template-columns:1fr}
+    .modal-bg{-webkit-align-items:flex-end;align-items:flex-end}
+    .modal{border-radius:16px 16px 0 0;max-width:100%;max-height:92vh;padding:20px 16px calc(32px + env(safe-area-inset-bottom));margin:0}
+    .modal-actions button{flex:1;padding:13px;font-size:14px;border-radius:10px}
+    .form-2col,.form-3col{grid-template-columns:1fr}
+    .month-sel-row select{font-size:15px!important}
+  }
+</style>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+</head>
+<body>
+
+<div class="auth-overlay" id="authOverlay">
+  <div class="auth-card">
+    <!-- Login Panel -->
+    <div class="auth-panel active" id="panel-login">
+      <h2>🔒 Invoice Tracker</h2>
+      <p class="auth-sub">Hydrotech</p>
+      <div class="auth-field">
+        <label>Username</label>
+        <input class="auth-input" type="text" id="loginUser" autocomplete="username" autocapitalize="none"
+          onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()">
+      </div>
+      <div class="auth-field">
+        <label>Password</label>
+        <input class="auth-input" type="password" id="loginPass" autocomplete="current-password"
+          onkeydown="if(event.key==='Enter')loginAsync()">
+      </div>
+      <div class="auth-error" id="loginError"></div>
+      <button class="auth-btn" onclick="loginAsync()">Login</button>
+      <span class="auth-link" onclick="showPanel('register')">New user? Register →</span>
+    </div>
+    <!-- Register Panel -->
+    <div class="auth-panel" id="panel-register">
+      <h2>👤 Create Account</h2>
+      <p class="auth-sub">Admin will activate your account</p>
+      <div class="auth-field">
+        <label>Username</label>
+        <input class="auth-input" type="text" id="regUser" autocomplete="username" autocapitalize="none">
+      </div>
+      <div class="auth-field">
+        <label>Password</label>
+        <input class="auth-input" type="password" id="regPass" autocomplete="new-password">
+      </div>
+      <div class="auth-field">
+        <label>Confirm Password</label>
+        <input class="auth-input" type="password" id="regConfirm" autocomplete="new-password"
+          onkeydown="if(event.key==='Enter')registerAsync()">
+      </div>
+      <div class="auth-error" id="regError"></div>
+      <div class="auth-msg" id="regMsg"></div>
+      <button class="auth-btn" onclick="registerAsync()">Register</button>
+      <span class="auth-link" onclick="showPanel('login')">← Back to login</span>
+    </div>
+  </div>
+</div>
+
+<header>
+  <h1>🧾 Invoice Tracker — Hydrotech</h1>
+  <div class="sync-status">
+    <div class="sync-dot syncing" id="syncDot"></div>
+    <span id="syncLabel">Connecting...</span>
+  </div>
+  <input class="search-box" id="searchBox" type="text" placeholder="Search customer, invoice no..." oninput="renderList()">
+  <div class="user-info" id="userInfo" style="display:none">
+    <span class="role-badge" id="roleBadge"></span>
+    <span class="user-name" id="userLabel"></span>
+    <button class="btn-logout" onclick="logout()">Logout</button>
+  </div>
+</header>
+
+<div class="filter-bar">
+  <div class="status-tabs">
+    <button class="status-tab active" data-status="all" onclick="setFilter('all')">All</button>
+    <button class="status-tab" data-status="unpaid" onclick="setFilter('unpaid')">Unpaid</button>
+    <button class="status-tab" data-status="partial" onclick="setFilter('partial')">Partial</button>
+    <button class="status-tab" data-status="paid" onclick="setFilter('paid')">Paid</button>
+  </div>
+  <select class="filter-select" id="salesmanFilter" onchange="renderList()">
+    <option value="">All Agents</option>
+  </select>
+  <select class="filter-select" id="monthFilter" onchange="renderList()">
+    <option value="">All Months</option>
+  </select>
+  <select class="filter-select" id="sortFilter" onchange="renderList()">
+    <option value="dateDesc">Date ↓ (Newest)</option>
+    <option value="dateAsc">Date ↑ (Oldest)</option>
+    <option value="amount">Amount ↓</option>
+    <option value="invoiceNo">Invoice No.</option>
+  </select>
+</div>
+
+<div class="summary-cards" id="summaryCards"></div>
+
+<div class="toolbar">
+  <button class="btn-add" onclick="openInvoiceModal()">+ Add Invoice</button>
+  <button class="btn-commission" onclick="openCommission()">📊 Agent Report</button>
+  <button class="btn-usermgmt btn-backup" onclick="openUserMgmt()">👥 Users</button>
+  <button class="btn-backup" onclick="exportBackup()">⬇ Backup</button>
+  <button class="btn-backup" onclick="importBackup()" style="background:#6c3483">⬆ Restore</button>
+</div>
+
+<div class="inv-table-wrap" id="invoiceList"></div>
+
+<!-- Add / Edit Invoice Modal -->
+<div class="modal-bg" id="invoiceModalBg">
+  <div class="modal">
+    <h2 id="invoiceModalTitle">Add Invoice</h2>
+
+    <div class="section-divider">Invoice Info</div>
+    <div class="form-2col">
+      <div class="form-row">
+        <label>Invoice No. *</label>
+        <input type="text" id="fInvNo" placeholder="e.g. E260250">
+      </div>
+      <div class="form-row">
+        <label>P/O (Customer PO)</label>
+        <input type="text" id="fPO" placeholder="Customer purchase order ref">
+      </div>
+    </div>
+    <div class="form-row">
+      <label>Invoice Date</label>
+      <input type="date" id="fInvDate">
+    </div>
+    <div class="form-row">
+      <label>Term</label>
+      <select id="fTerm">
+        <option value="C.O.D">C.O.D</option>
+        <option value="30 days">30 days</option>
+        <option value="60 days">60 days</option>
+        <option value="90 days">90 days</option>
+      </select>
+    </div>
+
+    <div class="section-divider">Customer</div>
+    <div class="form-row">
+      <label>Customer Name *</label>
+      <input type="text" id="fCustomer" placeholder="e.g. Ipoh Water Pro Enterprise">
+    </div>
+    <div class="form-row">
+      <label>Contact Number</label>
+      <input type="text" id="fContact" placeholder="012-3456789">
+    </div>
+
+    <div class="section-divider">Amount</div>
+    <div class="form-3col">
+      <div class="form-row">
+        <label>Amount Excl. SST (RM) *</label>
+        <input type="text" inputmode="decimal" id="fAmount" placeholder="0.00" oninput="formatAmountInput(this)">
+      </div>
+      <div class="form-row">
+        <label>SST (RM)</label>
+        <input type="text" inputmode="decimal" id="fSST" placeholder="0.00" oninput="formatAmountInput(this)">
+      </div>
+      <div class="form-row">
+        <label>Total Payable (RM)</label>
+        <input type="text" id="fTotalPreview" placeholder="0.00" readonly style="opacity:.6;cursor:default">
+      </div>
+    </div>
+
+    <div class="section-divider">Agent</div>
+    <div class="form-row">
+      <label>Agent (Salesman)</label>
+      <div class="chip-grid" id="salesmanChips"></div>
+      <div class="manage-link" onclick="toggleManageSalesmen()">+ Manage agents</div>
+      <div id="manageSalesmenPanel" style="display:none">
+        <div class="manage-add-row">
+          <input type="text" id="newSalesmanName" placeholder="New agent name" onkeydown="if(event.key==='Enter')addSalesman()">
+          <button onclick="addSalesman()">Add</button>
+        </div>
+        <div class="remove-chips" id="salesmanRemoveList"></div>
+      </div>
+    </div>
+
+    <div class="section-divider">Notes</div>
+    <div class="form-row">
+      <label>Notes / Remarks</label>
+      <textarea id="fNotes" placeholder="Description of work, item details, etc."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeInvoiceModal()">Cancel</button>
+      <button class="btn-confirm" onclick="saveInvoice()">Save Invoice</button>
+    </div>
+  </div>
+</div>
+
+<!-- Payment Modal -->
+<div class="modal-bg" id="paymentModalBg">
+  <div class="modal" style="max-width:480px">
+    <h2 id="paymentModalTitle">💰 Payments</h2>
+    <div class="pay-list" id="payList"></div>
+    <div class="bal-box" id="balBox"></div>
+    <div id="addPaySection">
+      <div class="add-pay-title">Record New Payment</div>
+      <div class="form-2col">
+        <div class="form-row">
+          <label>Date</label>
+          <input type="date" id="fPayDate">
+        </div>
+        <div class="form-row">
+          <label>Amount (RM)</label>
+          <input type="number" id="fPayAmount" placeholder="0.00" min="0" step="0.01">
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Note (optional)</label>
+        <input type="text" id="fPayNote" placeholder="e.g. Bank transfer, Cheque #123">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closePaymentModal()">Close</button>
+      <button class="btn-confirm" id="addPayBtn" onclick="addPayment()">Add Payment</button>
+    </div>
+  </div>
+</div>
+
+<!-- Commission Report Modal -->
+<div class="modal-bg" id="commissionBg">
+  <div class="modal" style="max-width:700px">
+    <h2>📊 Agent Report</h2>
+    <div class="month-sel-row">
+      <select id="commissionMonth" onchange="renderCommission()"></select>
+      <select id="commissionStatusFilter" onchange="renderCommission()">
+        <option value="all">All invoices</option>
+        <option value="paid">Paid only</option>
+      </select>
+    </div>
+    <div id="commissionContent"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="document.getElementById('commissionBg').classList.remove('open')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- User Management Modal -->
+<div class="modal-bg" id="userMgmtBg">
+  <div class="modal" style="max-width:700px">
+    <h2>👥 User Management</h2>
+    <div id="userMgmtContent"><div style="color:#555;text-align:center;padding:24px">Loading...</div></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="document.getElementById('userMgmtBg').classList.remove('open')">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'hydrotech_invoices_v1';
+let session = null; // { username, role, salesman, uid }
+
+function canWrite() { return session && (session.role==='admin' || session.role==='account'); }
+function canEdit()  { return session && (session.role==='admin' || session.role==='account'); }
+function canPay()   { return session && (session.role==='admin' || session.role==='account'); }
+
+// ---- Auth ----
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+function showPanel(name) {
+  document.querySelectorAll('.auth-panel').forEach(p =>
+    p.classList.toggle('active', p.id === 'panel-'+name));
+  const focus = { login:'loginUser', register:'regUser' }[name];
+  if (focus) setTimeout(() => document.getElementById(focus).focus(), 80);
+}
+
+function showLoginScreen() {
+  document.getElementById('loginError').textContent = '';
+  document.getElementById('authOverlay').classList.add('open');
+  showPanel('login');
+}
+
+async function loginAsync() {
+  const username = document.getElementById('loginUser').value.trim().toLowerCase();
+  const password = document.getElementById('loginPass').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  if (!username || !password) { errEl.textContent = 'Enter username and password.'; return; }
+  try {
+    const hash = await sha256(password);
+    const snap = await usersRef.once('value');
+    const users = snap.val() || {};
+    const entry = Object.entries(users).find(([,u]) =>
+      (u.username||'').toLowerCase() === username && u.passwordHash === hash);
+    if (!entry) {
+      errEl.textContent = 'Invalid username or password.';
+      document.getElementById('loginPass').value = '';
+      document.getElementById('loginPass').classList.add('shake');
+      setTimeout(() => document.getElementById('loginPass').classList.remove('shake'), 400);
+      return;
+    }
+    const [fuid, user] = entry;
+    if (user.role === 'pending') { errEl.textContent = 'Account pending. Contact admin to activate.'; return; }
+    session = { username: user.username, role: user.role, salesman: user.salesman||null, uid: fuid };
+    sessionStorage.setItem('iht_session', JSON.stringify(session));
+    document.getElementById('authOverlay').classList.remove('open');
+    onLoggedIn();
+  } catch(err) { errEl.textContent = 'Login error. Check connection.'; console.error(err); }
+}
+
+async function registerAsync() {
+  const username = document.getElementById('regUser').value.trim().toLowerCase();
+  const password = document.getElementById('regPass').value;
+  const confirm  = document.getElementById('regConfirm').value;
+  const errEl = document.getElementById('regError');
+  const msgEl = document.getElementById('regMsg');
+  errEl.textContent = ''; msgEl.textContent = '';
+  if (!username || !password) { errEl.textContent = 'Fill all fields.'; return; }
+  if (password.length < 4)    { errEl.textContent = 'Password must be at least 4 characters.'; return; }
+  if (password !== confirm)   { errEl.textContent = 'Passwords do not match.'; return; }
+  try {
+    const hash = await sha256(password);
+    const snap = await usersRef.once('value');
+    const users = snap.val() || {};
+    if (Object.values(users).some(u => (u.username||'').toLowerCase() === username)) {
+      errEl.textContent = 'Username already taken.'; return;
+    }
+    const isFirst = Object.keys(users).length === 0;
+    const role = isFirst ? 'admin' : 'pending';
+    const newUid = uid();
+    await usersRef.child(newUid).set({ username, passwordHash: hash, role, salesman: null, createdAt: Date.now() });
+    if (isFirst) {
+      session = { username, role: 'admin', salesman: null, uid: newUid };
+      sessionStorage.setItem('iht_session', JSON.stringify(session));
+      document.getElementById('authOverlay').classList.remove('open');
+      onLoggedIn();
+    } else {
+      msgEl.textContent = 'Account created! Waiting for admin to activate.';
+      document.getElementById('regUser').value = '';
+      document.getElementById('regPass').value = '';
+      document.getElementById('regConfirm').value = '';
+    }
+  } catch(err) { errEl.textContent = 'Registration error. Check connection.'; console.error(err); }
+}
+
+function logout() {
+  session = null;
+  sessionStorage.removeItem('iht_session');
+  document.body.removeAttribute('data-role');
+  document.getElementById('userInfo').style.display = 'none';
+  if (fbRef) fbRef.off();
+  setSyncStatus('offline');
+  showLoginScreen();
+  document.getElementById('loginPass').value = '';
+}
+
+function applyRoleToUI() {
+  if (!session) return;
+  document.body.setAttribute('data-role', session.role);
+  const badge = document.getElementById('roleBadge');
+  badge.textContent = session.role.toUpperCase();
+  badge.className = 'role-badge ' + session.role;
+  document.getElementById('userLabel').textContent = session.username;
+  document.getElementById('userInfo').style.display = 'flex';
+}
+
+function onLoggedIn() {
+  applyRoleToUI();
+  if (!fbReady) { renderSalesmanFilter(); renderMonthFilter(); renderSummary(); renderList(); return; }
+  setSyncStatus('syncing');
+  fbRef.on('value', snapshot => {
+    const fbData = snapshot.val();
+    if (fbData) {
+      const localTs = state.lastModified||0, fbTs = fbData.lastModified||0;
+      if (fbTs > localTs || !canWrite()) {
+        applyStateData(fbData);
+        if (canWrite()) localStorage.setItem(STORAGE_KEY, JSON.stringify(fbData));
+        renderSalesmanFilter(); renderMonthFilter(); renderSummary(); renderList();
+      }
+    }
+    setSyncStatus('synced');
+  }, () => setSyncStatus('offline'));
+}
+
+// ---- State ----
+let state = {
+  invoices: [],
+  salesmen: ['Jack', 'Kamal', 'Helmi', 'Faris'],
+  lastModified: 0
+};
+let currentFilter = 'all';
+let editingId = null;
+let paymentId = null;
+
+// ---- Firebase ----
+const FB_CONFIG = {
+  apiKey: "AIzaSyD8Cohe6nZ0A9kH0kUzQjpRvBQ_VDQZN7k",
+  authDomain: "service-schedule-2c481.firebaseapp.com",
+  databaseURL: "https://service-schedule-2c481-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "service-schedule-2c481",
+  storageBucket: "service-schedule-2c481.firebasestorage.app",
+  messagingSenderId: "525138167935",
+  appId: "1:525138167935:web:25e98bc7e98ca64704974a"
+};
+let fbReady = false, fbRef = null, usersRef = null;
+function initFirebase() {
+  try {
+    firebase.initializeApp(FB_CONFIG);
+    fbRef = firebase.database().ref('invoices');
+    usersRef = firebase.database().ref('invoiceUsers');
+    fbReady = true;
+  } catch(e) { console.warn('Firebase init failed', e); }
+}
+function setSyncStatus(s) {
+  const dot = document.getElementById('syncDot'), lbl = document.getElementById('syncLabel');
+  if (!dot) return;
+  dot.className = 'sync-dot ' + s;
+  lbl.textContent = s==='synced' ? 'Synced ✓' : s==='syncing' ? 'Syncing…' : 'Offline';
+}
+
+// ---- State helpers ----
+function applyStateData(data) {
+  if (!data) return;
+  state = data;
+  if (!Array.isArray(state.invoices)) {
+    state.invoices = (state.invoices && typeof state.invoices==='object') ? Object.values(state.invoices) : [];
+  }
+  state.invoices.forEach(inv => {
+    if (!Array.isArray(inv.payments)) {
+      inv.payments = (inv.payments && typeof inv.payments==='object') ? Object.values(inv.payments) : [];
+    }
+  });
+  if (!Array.isArray(state.salesmen)) state.salesmen = ['Jack','Kamal','Helmi','Faris'];
+}
+function persistState() {
+  if (!canWrite()) return;
+  state.lastModified = Date.now();
+  const toSave = JSON.parse(JSON.stringify(state));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+  if (fbReady) {
+    setSyncStatus('syncing');
+    fbRef.set(toSave).then(() => setSyncStatus('synced')).catch(() => setSyncStatus('offline'));
+  }
+}
+
+// ---- Helpers ----
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function amountPaid(inv) { return (inv.payments||[]).reduce((s,p) => s+(p.amount||0), 0); }
+function totalPayable(inv) { return (inv.amount||0) + (inv.sst||0); }
+function computeStatus(inv) {
+  const paid = amountPaid(inv);
+  const total = totalPayable(inv);
+  if (total > 0 && paid >= total) return 'paid';
+  if (paid > 0) return 'partial';
+  return 'unpaid';
+}
+function statusLabel(s) {
+  return {unpaid:'UNPAID',partial:'PARTIAL',paid:'PAID',overdue:'OVERDUE'}[s] || s.toUpperCase();
+}
+function fmtRM(n) {
+  return 'RM ' + Number(n||0).toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function fmtDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d+'T00:00:00');
+  return `${dt.getDate()}/${dt.getMonth()+1}/${dt.getFullYear()}`;
+}
+function isoToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function daysOverdue(inv) {
+  if (!inv.dueDate) return 0;
+  const due = new Date(inv.dueDate+'T00:00:00');
+  const today = new Date(); today.setHours(0,0,0,0);
+  return Math.max(0, Math.floor((today-due)/86400000));
+}
+
+// ---- Amount input formatting ----
+function formatAmountInput(input) {
+  const raw = input.value.replace(/,/g, '');
+  const cursorBefore = input.selectionStart;
+  const commasBefore = (input.value.slice(0, cursorBefore).match(/,/g)||[]).length;
+
+  // Keep only digits and one decimal point
+  let clean = raw.replace(/[^0-9.]/g, '');
+  const dot = clean.indexOf('.');
+  if (dot !== -1) clean = clean.slice(0, dot+1) + clean.slice(dot+1).replace(/\./g, '');
+
+  // Add thousand commas
+  const parts = clean.split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  input.value = parts.join('.');
+
+  // Restore cursor adjusted for comma shift
+  const commasAfter = (input.value.slice(0, cursorBefore).match(/,/g)||[]).length;
+  const newPos = Math.max(0, cursorBefore + commasAfter - commasBefore);
+  input.setSelectionRange(newPos, newPos);
+
+  updateTotalPreview();
+}
+
+function parseAmountField(id) {
+  return parseFloat(document.getElementById(id).value.replace(/,/g,''))||0;
+}
+function formatNumber(n) {
+  const parts = (parseFloat(n)||0).toString().split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return parts.join('.');
+}
+
+function updateTotalPreview() {
+  const total = parseAmountField('fAmount') + parseAmountField('fSST');
+  const parts = total.toFixed(2).split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  document.getElementById('fTotalPreview').value = parts.join('.');
+}
+
+// ---- Summary cards ----
+function renderSummary() {
+  let invs = state.invoices;
+  if (session && session.role==='salesman' && session.salesman)
+    invs = invs.filter(inv => inv.salesman===session.salesman);
+  let outstanding=0,outN=0,partialTot=0,partialN=0,paidTot=0,paidN=0,totalTot=0;
+  invs.forEach(inv => {
+    const s = computeStatus(inv);
+    const tp = totalPayable(inv);
+    const bal = tp - amountPaid(inv);
+    totalTot += tp;
+    if (s==='paid') { paidTot += tp; paidN++; }
+    if (s==='partial') { partialTot += Math.max(0,bal); partialN++; outstanding += Math.max(0,bal); outN++; }
+    if (s==='unpaid') { outstanding += Math.max(0,bal); outN++; }
+  });
+  document.getElementById('summaryCards').innerHTML = `
+    <div class="summary-card s-outstanding">
+      <div class="card-label">Outstanding</div>
+      <div class="card-value">${fmtRM(outstanding)}</div>
+      <div class="card-count">${outN} invoice(s)</div>
+    </div>
+    <div class="summary-card s-overdue">
+      <div class="card-label">Partial Payment</div>
+      <div class="card-value">${fmtRM(partialTot)}</div>
+      <div class="card-count">${partialN} invoice(s)</div>
+    </div>
+    <div class="summary-card s-paid">
+      <div class="card-label">Collected</div>
+      <div class="card-value">${fmtRM(paidTot)}</div>
+      <div class="card-count">${paidN} invoice(s)</div>
+    </div>
+    <div class="summary-card s-total">
+      <div class="card-label">Total Invoiced</div>
+      <div class="card-value">${fmtRM(totalTot)}</div>
+      <div class="card-count">${invs.length} invoice(s)</div>
+    </div>`;
+}
+
+// ---- Filters ----
+function setFilter(f) {
+  currentFilter = f;
+  document.querySelectorAll('.status-tab').forEach(t => t.classList.toggle('active', t.dataset.status===f));
+  renderList();
+}
+function renderSalesmanFilter() {
+  const sel = document.getElementById('salesmanFilter');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All Agents</option>' +
+    state.salesmen.map(s => `<option value="${s}"${s===cur?' selected':''}>${s}</option>`).join('');
+}
+
+// ---- Invoice list ----
+function daysSince(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + 'T00:00:00');
+  const diff = Date.now() - d.getTime();
+  return Math.floor(diff / 86400000);
+}
+
+function renderMonthFilter() {
+  const sel = document.getElementById('monthFilter');
+  const cur = sel.value;
+  const months = new Set();
+  state.invoices.forEach(inv => {
+    if (inv.invoiceDate) months.add(inv.invoiceDate.slice(0,7));
+  });
+  const sorted = [...months].sort((a,b) => b.localeCompare(a));
+  sel.innerHTML = '<option value="">All Months</option>' +
+    sorted.map(m => {
+      const [y,mo] = m.split('-');
+      const label = new Date(y, mo-1, 1).toLocaleString('en',{month:'short',year:'numeric'});
+      return `<option value="${m}"${m===cur?' selected':''}>${label}</option>`;
+    }).join('');
+}
+
+function renderList() {
+  const search = (document.getElementById('searchBox').value||'').toLowerCase();
+  const smF = document.getElementById('salesmanFilter').value;
+  const mF  = document.getElementById('monthFilter').value;
+  const sort = document.getElementById('sortFilter').value;
+
+  let items = state.invoices.filter(inv => {
+    if (session && session.role==='salesman' && session.salesman && inv.salesman!==session.salesman) return false;
+    const s = computeStatus(inv);
+    if (currentFilter!=='all' && s!==currentFilter) return false;
+    if (smF && inv.salesman!==smF) return false;
+    if (mF && !(inv.invoiceDate||'').startsWith(mF)) return false;
+    if (search) {
+      const hay = [inv.invoiceNo,inv.customer,inv.contact,inv.projectRef,inv.salesman,inv.notes].join(' ').toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  });
+
+  items.sort((a,b) => {
+    if (sort==='amount')    return totalPayable(b)-totalPayable(a);
+    if (sort==='invoiceNo') return (b.invoiceNo||'').localeCompare(a.invoiceNo||'');
+    if (sort==='dateAsc')   return (a.invoiceDate||'').localeCompare(b.invoiceDate||'');
+    return (b.invoiceDate||'').localeCompare(a.invoiceDate||''); // dateDesc default
+  });
+
+  const el = document.getElementById('invoiceList');
+  if (!items.length) {
+    el.innerHTML = '<div class="empty-list">No invoices found.</div>';
+    return;
+  }
+
+  const showPay = canPay();
+  const showEdit = canEdit();
+  const groupByMonth = sort === 'dateDesc' || sort === 'dateAsc';
+  let rows = '';
+  let lastMonth = '';
+
+  items.forEach(inv => {
+    const s = computeStatus(inv);
+    const paid = amountPaid(inv);
+    const tp = totalPayable(inv);
+    const bal = Math.max(0, tp - paid);
+    const days = daysSince(inv.invoiceDate);
+    const dClass = days === null ? '' : days > 90 ? 'old' : days > 60 ? 'warn' : '';
+    const daysPill = days !== null ? `<span class="days-pill ${dClass}">${days}d</span>` : '—';
+    const balCell = s==='partial' ? fmtRM(bal) : '';
+
+    // Month group header (only when sorted by date)
+    if (groupByMonth) {
+      const month = (inv.invoiceDate||'').slice(0,7);
+      if (month !== lastMonth && month) {
+        lastMonth = month;
+        const [y,mo] = month.split('-');
+        const mLabel = new Date(y, mo-1, 1).toLocaleString('en',{month:'long',year:'numeric'});
+        rows += `<tr class="month-group-row"><td colspan="11">${mLabel}</td></tr>`;
+      }
+    }
+
+    const actions = (showPay || showEdit) ?
+      (showPay  ? `<button class="btn-rp" onclick="openPaymentModal('${inv.id}')">💰</button>` : '') +
+      (showEdit ? `<button class="btn-re" onclick="openInvoiceModal('${inv.id}')">✏</button>` +
+                  `<button class="btn-rd" onclick="deleteInvoice('${inv.id}')">✕</button>` : '')
+      : '';
+
+    rows += `<tr class="status-${s}">
+      <td class="td-invno">${inv.invoiceNo||'—'}</td>
+      <td class="td-customer" title="${inv.customer||''}">${inv.customer||'—'}</td>
+      <td class="td-contact">${inv.contact||''}</td>
+      <td class="td-po" title="${inv.projectRef||''}">${inv.projectRef||''}</td>
+      <td class="td-notes" title="${inv.notes||''}">${inv.notes||''}</td>
+      <td class="td-agent">${inv.salesman||'—'}</td>
+      <td class="td-date">${fmtDate(inv.invoiceDate)}</td>
+      <td class="td-days">${daysPill}</td>
+      <td class="td-amount">${fmtRM(tp)}</td>
+      <td class="td-bal">${balCell}</td>
+      <td class="td-actions">${actions}</td>
+    </tr>`;
+  });
+
+  el.innerHTML = `<table class="inv-table">
+    <thead><tr>
+      <th>Invoice No</th>
+      <th>Customer</th>
+      <th>Contact</th>
+      <th>P/O</th>
+      <th>Description</th>
+      <th>Agent</th>
+      <th>Date</th>
+      <th style="text-align:center">Days</th>
+      <th style="text-align:right">Amount</th>
+      <th style="text-align:right">Balance</th>
+      <th></th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+// ---- Invoice Modal ----
+function openInvoiceModal(id) {
+  editingId = id || null;
+  document.getElementById('manageSalesmenPanel').style.display = 'none';
+  if (id) {
+    const inv = state.invoices.find(i => i.id===id);
+    if (!inv) return;
+    document.getElementById('invoiceModalTitle').textContent = 'Edit Invoice';
+    document.getElementById('fInvNo').value = inv.invoiceNo||'';
+    document.getElementById('fPO').value = inv.projectRef||'';
+    document.getElementById('fInvDate').value = inv.invoiceDate||'';
+    document.getElementById('fTerm').value = inv.term||'C.O.D';
+    document.getElementById('fCustomer').value = inv.customer||'';
+    document.getElementById('fContact').value = inv.contact||'';
+    document.getElementById('fAmount').value = inv.amount ? formatNumber(inv.amount) : '';
+    document.getElementById('fSST').value = inv.sst ? formatNumber(inv.sst) : '';
+    document.getElementById('fNotes').value = inv.notes||'';
+    renderSalesmanChips(inv.salesman||'');
+    updateTotalPreview();
+  } else {
+    document.getElementById('invoiceModalTitle').textContent = 'Add Invoice';
+    document.getElementById('fInvNo').value = '';
+    document.getElementById('fPO').value = '';
+    document.getElementById('fInvDate').value = isoToday();
+    document.getElementById('fTerm').value = 'C.O.D';
+    document.getElementById('fCustomer').value = '';
+    document.getElementById('fContact').value = '';
+    document.getElementById('fAmount').value = '';
+    document.getElementById('fSST').value = '';
+    document.getElementById('fNotes').value = '';
+    renderSalesmanChips('');
+  }
+  updateTotalPreview();
+  document.getElementById('invoiceModalBg').classList.add('open');
+  setTimeout(() => document.getElementById('fInvNo').focus(), 100);
+}
+function closeInvoiceModal() {
+  document.getElementById('invoiceModalBg').classList.remove('open');
+  editingId = null;
+}
+function saveInvoice() {
+  const invNo = document.getElementById('fInvNo').value.trim();
+  const customer = document.getElementById('fCustomer').value.trim();
+  const amount = parseAmountField('fAmount');
+  if (!invNo) { alert('Invoice number is required.'); return; }
+  if (!customer) { alert('Customer name is required.'); return; }
+  if (!amount) { alert('Invoice amount is required.'); return; }
+
+  const data = {
+    invoiceNo: invNo,
+    projectRef: document.getElementById('fPO').value.trim(),
+    invoiceDate: document.getElementById('fInvDate').value,
+    term: document.getElementById('fTerm').value,
+    customer,
+    contact: document.getElementById('fContact').value.trim(),
+    amount,
+    sst: parseAmountField('fSST'),
+    salesman: getSelectedSalesman(),
+    notes: document.getElementById('fNotes').value.trim(),
+    updatedAt: Date.now()
+  };
+
+  if (editingId) {
+    const idx = state.invoices.findIndex(i => i.id===editingId);
+    if (idx!==-1) {
+      data.id = editingId;
+      data.payments = state.invoices[idx].payments||[];
+      data.createdAt = state.invoices[idx].createdAt;
+      state.invoices[idx] = data;
+    }
+  } else {
+    data.id = uid();
+    data.payments = [];
+    data.createdAt = Date.now();
+    state.invoices.push(data);
+  }
+  closeInvoiceModal();
+  persistState(); renderSummary(); renderList();
+}
+function deleteInvoice(id) {
+  if (!confirm('Delete this invoice? This cannot be undone.')) return;
+  state.invoices = state.invoices.filter(i => i.id!==id);
+  persistState(); renderSummary(); renderList();
+}
+
+// ---- Salesman chips ----
+function renderSalesmanChips(selected) {
+  const grid = document.getElementById('salesmanChips');
+  grid.innerHTML = '';
+  const none = document.createElement('label');
+  none.className = 'sm-chip' + (!selected?' checked':'');
+  none.style.fontStyle = 'italic';
+  none.innerHTML = `<input type="radio" name="sm" value="">None`;
+  none.querySelector('input').addEventListener('change', () => {
+    grid.querySelectorAll('.sm-chip').forEach(c => c.classList.remove('checked'));
+    none.classList.add('checked');
+  });
+  grid.appendChild(none);
+  state.salesmen.forEach(name => {
+    const chip = document.createElement('label');
+    chip.className = 'sm-chip'+(selected===name?' checked':'');
+    chip.innerHTML = `<input type="radio" name="sm" value="${name}"${selected===name?' checked':''}>${name}`;
+    chip.querySelector('input').addEventListener('change', e => {
+      grid.querySelectorAll('.sm-chip').forEach(c => c.classList.remove('checked'));
+      if (e.target.checked) chip.classList.add('checked');
+    });
+    grid.appendChild(chip);
+  });
+  renderSalesmanRemoveList();
+}
+function renderSalesmanRemoveList() {
+  document.getElementById('salesmanRemoveList').innerHTML = state.salesmen.map(n =>
+    `<div class="remove-chip">${n}<button onclick="removeSalesman('${n}')">✕</button></div>`
+  ).join('');
+}
+function toggleManageSalesmen() {
+  const p = document.getElementById('manageSalesmenPanel');
+  p.style.display = p.style.display==='none' ? 'block' : 'none';
+}
+function addSalesman() {
+  const inp = document.getElementById('newSalesmanName');
+  const name = inp.value.trim();
+  if (!name || state.salesmen.includes(name)) return;
+  state.salesmen.push(name); inp.value='';
+  renderSalesmanChips(getSelectedSalesman());
+  renderSalesmanFilter(); persistState();
+}
+function removeSalesman(name) {
+  state.salesmen = state.salesmen.filter(s => s!==name);
+  renderSalesmanChips(getSelectedSalesman()===name?'':getSelectedSalesman());
+  renderSalesmanFilter(); persistState();
+}
+function getSelectedSalesman() {
+  const el = document.querySelector('#salesmanChips input[name="sm"]:checked');
+  return el ? el.value : '';
+}
+
+// ---- Payment Modal ----
+function openPaymentModal(id) {
+  paymentId = id;
+  const inv = state.invoices.find(i => i.id===id);
+  if (!inv) return;
+  document.getElementById('paymentModalTitle').textContent = `💰 ${inv.invoiceNo} — ${inv.customer}`;
+  document.getElementById('fPayDate').value = isoToday();
+  document.getElementById('fPayAmount').value = '';
+  document.getElementById('fPayNote').value = '';
+  document.getElementById('addPaySection').style.display = canPay()?'block':'none';
+  document.getElementById('addPayBtn').style.display = canPay()?'inline-block':'none';
+  renderPayList(inv);
+  document.getElementById('paymentModalBg').classList.add('open');
+}
+function renderPayList(inv) {
+  const pays = inv.payments||[];
+  const paid = amountPaid(inv);
+  const tp = totalPayable(inv);
+  const bal = tp - paid;
+
+  document.getElementById('payList').innerHTML = pays.length
+    ? pays.map((p,i) => `
+        <div class="pay-item">
+          <div>
+            <div class="pay-amount">${fmtRM(p.amount)}</div>
+            ${p.note?`<div class="pay-note">${p.note}</div>`:''}
+          </div>
+          <div>
+            <div class="pay-date">${fmtDate(p.date)}</div>
+            ${canEdit()?`<button class="pay-del" onclick="deletePayment('${inv.id}',${i})">✕ Remove</button>`:''}
+          </div>
+        </div>`).join('')
+    : '<div class="pay-empty">No payments recorded yet.</div>';
+
+  const hasSst = (inv.sst||0)>0;
+  document.getElementById('balBox').innerHTML = `
+    ${hasSst?`<div class="bal-line"><span>Excl. SST</span><span>${fmtRM(inv.amount)}</span></div>
+    <div class="bal-line"><span>SST</span><span>${fmtRM(inv.sst)}</span></div>`:''}
+    <div class="bal-line"><span>Total Payable</span><span>${fmtRM(tp)}</span></div>
+    <div class="bal-line"><span>Total Paid</span><span style="color:#5dfc8d">${fmtRM(paid)}</span></div>
+    <div class="bal-line"><span>Balance Due</span><span class="${bal<=0?'settled':'due'}">${fmtRM(Math.max(0,bal))}</span></div>`;
+}
+function addPayment() {
+  const inv = state.invoices.find(i => i.id===paymentId);
+  if (!inv) return;
+  const amount = parseFloat(document.getElementById('fPayAmount').value);
+  if (!amount||amount<=0) { alert('Enter a valid amount.'); return; }
+  const date = document.getElementById('fPayDate').value;
+  const note = document.getElementById('fPayNote').value.trim();
+  if (!Array.isArray(inv.payments)) inv.payments=[];
+  inv.payments.push({date,amount,note});
+  const paid = amountPaid(inv);
+  const tp = totalPayable(inv);
+  if (paid>=tp) inv.status='paid';
+  else if (paid>0) inv.status='partial';
+  document.getElementById('fPayAmount').value='';
+  document.getElementById('fPayNote').value='';
+  renderPayList(inv);
+  persistState(); renderSummary(); renderList();
+}
+function deletePayment(invId, idx) {
+  const inv = state.invoices.find(i => i.id===invId);
+  if (!inv) return;
+  inv.payments.splice(idx,1);
+  const paid = amountPaid(inv);
+  if (paid<=0) inv.status='unpaid';
+  else if (paid<totalPayable(inv)) inv.status='partial';
+  renderPayList(inv);
+  persistState(); renderSummary(); renderList();
+}
+function closePaymentModal() {
+  document.getElementById('paymentModalBg').classList.remove('open');
+  paymentId=null;
+}
+
+// ---- Commission Report ----
+function openCommission() {
+  const sel = document.getElementById('commissionMonth');
+  sel.innerHTML='';
+  const months = new Set();
+  state.invoices.forEach(inv => { const m=(inv.invoiceDate||'').slice(0,7); if(m) months.add(m); });
+  if (!months.size) { sel.innerHTML='<option value="">No invoices yet</option>'; }
+  else {
+    [...months].sort().reverse().forEach(m => {
+      const [y,mo]=m.split('-');
+      sel.innerHTML+=`<option value="${m}">${new Date(y,mo-1,1).toLocaleString('en-GB',{month:'long',year:'numeric'})}</option>`;
+    });
+  }
+  document.getElementById('commissionBg').classList.add('open');
+  renderCommission();
+}
+function renderCommission() {
+  const month = document.getElementById('commissionMonth').value;
+  const stF = document.getElementById('commissionStatusFilter').value;
+  const content = document.getElementById('commissionContent');
+  if (!month) { content.innerHTML='<div class="report-empty">No data.</div>'; return; }
+
+  const bySm = {};
+  state.invoices.filter(inv => {
+    if (!(inv.invoiceDate||'').startsWith(month)) return false;
+    if (stF==='paid' && computeStatus(inv)!=='paid') return false;
+    return true;
+  }).forEach(inv => {
+    const key = inv.salesman||'(No agent)';
+    if (!bySm[key]) bySm[key]={invs:[],amt:0,sst:0};
+    bySm[key].invs.push(inv);
+    bySm[key].amt += inv.amount||0;
+    bySm[key].sst += inv.sst||0;
+  });
+
+  const salesmen = Object.keys(bySm).sort();
+  if (!salesmen.length) { content.innerHTML='<div class="report-empty">No invoices for this period.</div>'; return; }
+
+  let gAmt=0,gSst=0,gCount=0;
+  const rows = salesmen.map(sm => {
+    const d=bySm[sm];
+    gAmt+=d.amt; gSst+=d.sst; gCount+=d.invs.length;
+    const invList = d.invs.map(inv => {
+      const s=computeStatus(inv);
+      return `<div style="font-size:11px;color:#aaa;margin-bottom:3px">${inv.invoiceNo||'—'} — ${inv.customer||'—'} <span class="status-badge ${s}" style="font-size:9px;padding:1px 5px">${statusLabel(s)}</span> <span style="color:#fff;margin-left:4px">${fmtRM(totalPayable(inv))}</span></div>`;
+    }).join('');
+    return `<tr>
+      <td class="comm-sm">${sm}<div style="font-weight:400;margin-top:6px">${invList}</div></td>
+      <td style="text-align:center;color:#aaa">${d.invs.length}</td>
+      <td style="text-align:right;color:#4fc3f7">${fmtRM(d.amt)}</td>
+      <td style="text-align:right;color:#aaa">${d.sst>0?fmtRM(d.sst):'—'}</td>
+      <td style="text-align:right;color:#5dfc8d;font-weight:700">${fmtRM(d.amt+d.sst)}</td>
+    </tr>`;
+  }).join('');
+
+  content.innerHTML = `
+    <table class="comm-table">
+      <thead><tr><th>Agent</th><th style="text-align:center">Invoices</th><th style="text-align:right">Excl. SST</th><th style="text-align:right">SST</th><th style="text-align:right">Total Payable</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding:12px 16px;background:#0f3460;border-radius:8px;border:2px solid #f39c12">
+      <span style="color:#f39c12;font-weight:700">${gCount} invoice(s)</span>
+      <span style="color:#f39c12;font-weight:700;font-size:16px">Total: ${fmtRM(gAmt+gSst)}</span>
+    </div>`;
+}
+
+// ---- User Management ----
+let usersCache = {};
+async function openUserMgmt() {
+  document.getElementById('userMgmtBg').classList.add('open');
+  document.getElementById('userMgmtContent').innerHTML = '<div style="color:#555;text-align:center;padding:24px">Loading...</div>';
+  try {
+    const snap = await usersRef.once('value');
+    usersCache = snap.val() || {};
+    renderUserMgmt();
+  } catch(e) {
+    document.getElementById('userMgmtContent').innerHTML = '<div style="color:#e94560;text-align:center;padding:24px">Failed to load users.</div>';
+  }
+}
+
+function renderUserMgmt() {
+  const content = document.getElementById('userMgmtContent');
+  const entries = Object.entries(usersCache).sort((a,b) => (a[1].createdAt||0)-(b[1].createdAt||0));
+  if (!entries.length) { content.innerHTML = '<div style="color:#555;text-align:center;padding:24px">No users yet.</div>'; return; }
+
+  const smOpts = ['', ...state.salesmen].map(s => `<option value="${s}">${s||'—'}</option>`).join('');
+  const roleOpts = r => ['admin','account','salesman'].map(x => `<option value="${x}"${x===r?' selected':''}>${x}</option>`).join('');
+
+  const rows = entries.map(([fuid, u]) => {
+    const isPending = u.role === 'pending';
+    const isSelf = fuid === session.uid;
+    const smSel = state.salesmen.map(s => `<option value="${s}"${u.salesman===s?' selected':''}>${s}</option>`).join('');
+    return `<tr>
+      <td style="font-weight:600;color:#fff">${u.username}${isSelf?' <span class="self-badge">YOU</span>':''}</td>
+      <td>
+        ${isPending ? '<span class="pending-badge">PENDING</span><br>' : ''}
+        <select class="user-sel" id="rsel-${fuid}" ${isSelf?'disabled':''} onchange="onRoleChange('${fuid}',this.value)">
+          ${isPending ? `<option value="">Select role</option>` : ''}${roleOpts(u.role)}
+        </select>
+      </td>
+      <td>
+        <select class="user-sel" id="ssel-${fuid}" ${isSelf?'disabled':''}>
+          <option value="">—</option>${smSel}
+        </select>
+      </td>
+      <td style="color:#555;font-size:12px">${u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-MY') : '—'}</td>
+      <td style="text-align:right;white-space:nowrap">
+        ${isPending ? `<button class="btn-activate" onclick="activateUser('${fuid}')">✓ Activate</button>` :
+          (!isSelf ? `<button class="btn-activate" style="background:#2980b9" onclick="saveUserRole('${fuid}')">Save</button>` : '')}
+        ${!isSelf ? `<button class="btn-del-user" onclick="deleteUser('${fuid}')" title="Remove user">✕</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+
+  content.innerHTML = `<table class="user-table">
+    <thead><tr><th>Username</th><th>Role</th><th>Salesman</th><th>Created</th><th></th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function onRoleChange(fuid, role) {
+  const sselEl = document.getElementById('ssel-'+fuid);
+  if (sselEl) sselEl.style.opacity = role==='salesman' ? '1' : '0.4';
+}
+
+async function activateUser(fuid) {
+  const role = document.getElementById('rsel-'+fuid).value;
+  if (!role || role==='') { alert('Select a role before activating.'); return; }
+  const salesman = document.getElementById('ssel-'+fuid).value || null;
+  if (role==='salesman' && !salesman) { alert('Select which salesman this user is.'); return; }
+  usersCache[fuid].role = role;
+  usersCache[fuid].salesman = salesman;
+  await usersRef.child(fuid).update({ role, salesman: salesman||null });
+  renderUserMgmt();
+}
+
+async function saveUserRole(fuid) {
+  const role = document.getElementById('rsel-'+fuid).value;
+  const salesman = document.getElementById('ssel-'+fuid).value || null;
+  if (role==='salesman' && !salesman) { alert('Select which salesman this user is.'); return; }
+  usersCache[fuid].role = role;
+  usersCache[fuid].salesman = salesman;
+  await usersRef.child(fuid).update({ role, salesman: salesman||null });
+  renderUserMgmt();
+}
+
+async function deleteUser(fuid) {
+  const u = usersCache[fuid];
+  if (!confirm(`Remove user "${u.username}"? They will need to re-register.`)) return;
+  delete usersCache[fuid];
+  await usersRef.child(fuid).remove();
+  renderUserMgmt();
+}
+
+// ---- Backup / Restore ----
+function exportBackup() {
+  const blob = new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=`iht-invoices-${isoToday()}.json`; a.click();
+  URL.revokeObjectURL(url);
+}
+function importBackup() {
+  if (!confirm('Restore from backup? This will overwrite all current data.')) return;
+  const inp = document.createElement('input');
+  inp.type='file'; inp.accept='.json';
+  inp.onchange = e => {
+    const f=e.target.files[0]; if(!f) return;
+    const r=new FileReader();
+    r.onload = ev => {
+      try {
+        applyStateData(JSON.parse(ev.target.result));
+        persistState(); renderSalesmanFilter(); renderMonthFilter(); renderSummary(); renderList();
+        alert('Backup restored successfully.');
+      } catch(err) { alert('Restore failed: '+err.message); }
+    };
+    r.readAsText(f);
+  };
+  inp.click();
+}
+
+// ---- Init ----
+function init() {
+  initFirebase();
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) applyStateData(JSON.parse(saved));
+  } catch(e) { console.error('Load error:',e); }
+  renderSalesmanFilter(); renderMonthFilter(); renderSummary(); renderList();
+
+  if (!fbReady) { showLoginScreen(); return; }
+  setSyncStatus('syncing');
+  firebase.auth().signInAnonymously().then(() => {
+    setSyncStatus('synced');
+    const saved = sessionStorage.getItem('iht_session');
+    if (saved) {
+      try {
+        session = JSON.parse(saved);
+        onLoggedIn();
+        return;
+      } catch(e) { session = null; }
+    }
+    showLoginScreen();
+  }).catch(() => { setSyncStatus('offline'); showLoginScreen(); });
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key==='Escape') {
+    closeInvoiceModal(); closePaymentModal();
+    document.getElementById('commissionBg').classList.remove('open');
+    document.getElementById('userMgmtBg').classList.remove('open');
+  }
+});
+
+init();
+</script>
+</body>
+</html>

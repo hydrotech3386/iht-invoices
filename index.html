@@ -109,19 +109,18 @@
   /* Auth */
   .auth-overlay{position:fixed;inset:0;background:#1a1a2e;z-index:999;display:flex;align-items:center;justify-content:center;visibility:hidden;opacity:0;transition:opacity .3s}
   .auth-overlay.open{visibility:visible;opacity:1}
-  .auth-card{background:#16213e;border:1px solid #0f3460;border-radius:12px;padding:32px 28px;width:100%;max-width:360px}
+  .auth-card{background:#16213e;border:1px solid #0f3460;border-radius:12px;padding:32px 28px;width:100%;max-width:340px;text-align:center}
   .auth-panel{display:none}.auth-panel.active{display:block}
-  .auth-card h2{color:#e94560;font-size:18px;margin-bottom:4px;text-align:center}
-  .auth-sub{color:#888;font-size:13px;margin-bottom:20px;text-align:center}
-  .auth-field{margin-bottom:10px}
-  .auth-field label{font-size:11px;color:#777;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px}
-  .auth-input{width:100%;background:#0f3460;border:1px solid #333;color:#fff;border-radius:8px;padding:10px 14px;font-size:15px}
+  .auth-card h2{color:#e94560;font-size:18px;margin-bottom:6px}
+  .auth-sub{color:#888;font-size:13px;margin-bottom:20px}
+  .auth-input{width:100%;background:#0f3460;border:1px solid #333;color:#fff;border-radius:8px;padding:10px 14px;font-size:15px;text-align:center;letter-spacing:.5px;margin-bottom:10px;display:block}
   .auth-input:focus{outline:none;border-color:#e94560}
-  .auth-error{color:#e94560;font-size:12px;min-height:16px;margin:6px 0 4px}
-  .auth-msg{color:#27ae60;font-size:12px;min-height:16px;margin:6px 0 4px}
-  .auth-btn{width:100%;background:#e94560;border:none;color:#fff;border-radius:8px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;margin-top:6px}
+  .auth-input::placeholder{letter-spacing:0;color:#555}
+  .auth-error{color:#e94560;font-size:12px;min-height:16px;margin:0 0 8px}
+  .auth-msg{color:#27ae60;font-size:12px;min-height:16px;margin:0 0 8px}
+  .auth-btn{width:100%;background:#e94560;border:none;color:#fff;border-radius:8px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:14px}
   .auth-btn:hover{background:#c0392b}
-  .auth-link{color:#666;font-size:12px;cursor:pointer;display:block;text-align:center;margin-top:14px}
+  .auth-link{color:#555;font-size:12px;cursor:pointer;display:block;text-align:left}
   .auth-link:hover{color:#aaa}
   @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
   .shake{animation:shake .35s ease}
@@ -240,41 +239,33 @@
     <div class="auth-panel active" id="panel-login">
       <h2>🔒 Invoice Tracker</h2>
       <p class="auth-sub">Hydrotech</p>
-      <div class="auth-field">
-        <label>Username</label>
-        <input class="auth-input" type="text" id="loginUser" autocomplete="username" autocapitalize="none"
-          onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()">
-      </div>
-      <div class="auth-field">
-        <label>Password</label>
-        <input class="auth-input" type="password" id="loginPass" autocomplete="current-password"
-          onkeydown="if(event.key==='Enter')loginAsync()">
-      </div>
+      <input class="auth-input" type="email" id="loginEmail" placeholder="Email address"
+        autocomplete="email" autocapitalize="none"
+        onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()">
+      <input class="auth-input" type="password" id="loginPass" placeholder="Password"
+        autocomplete="current-password"
+        onkeydown="if(event.key==='Enter')loginAsync()">
       <div class="auth-error" id="loginError"></div>
-      <button class="auth-btn" onclick="loginAsync()">Login</button>
+      <button class="auth-btn" onclick="loginAsync()">Sign In</button>
       <span class="auth-link" onclick="showPanel('register')">New user? Register →</span>
     </div>
     <!-- Register Panel -->
     <div class="auth-panel" id="panel-register">
       <h2>👤 Create Account</h2>
-      <p class="auth-sub">Admin will activate your account</p>
-      <div class="auth-field">
-        <label>Username</label>
-        <input class="auth-input" type="text" id="regUser" autocomplete="username" autocapitalize="none">
-      </div>
-      <div class="auth-field">
-        <label>Password</label>
-        <input class="auth-input" type="password" id="regPass" autocomplete="new-password">
-      </div>
-      <div class="auth-field">
-        <label>Confirm Password</label>
-        <input class="auth-input" type="password" id="regConfirm" autocomplete="new-password"
-          onkeydown="if(event.key==='Enter')registerAsync()">
-      </div>
+      <p class="auth-sub">Request access to Invoice Tracker</p>
+      <input class="auth-input" type="text" id="regName" placeholder="Your name"
+        autocomplete="name">
+      <input class="auth-input" type="email" id="regEmail" placeholder="Email address"
+        autocomplete="email" autocapitalize="none">
+      <input class="auth-input" type="password" id="regPass" placeholder="Password (min 4 chars)"
+        autocomplete="new-password">
+      <input class="auth-input" type="password" id="regConfirm" placeholder="Confirm password"
+        autocomplete="new-password"
+        onkeydown="if(event.key==='Enter')registerAsync()">
       <div class="auth-error" id="regError"></div>
       <div class="auth-msg" id="regMsg"></div>
       <button class="auth-btn" onclick="registerAsync()">Register</button>
-      <span class="auth-link" onclick="showPanel('login')">← Back to login</span>
+      <span class="auth-link" onclick="showPanel('login')">← Back to sign in</span>
     </div>
   </div>
 </div>
@@ -508,19 +499,19 @@ function showLoginScreen() {
 }
 
 async function loginAsync() {
-  const username = document.getElementById('loginUser').value.trim().toLowerCase();
+  const email    = document.getElementById('loginEmail').value.trim().toLowerCase();
   const password = document.getElementById('loginPass').value;
-  const errEl = document.getElementById('loginError');
+  const errEl    = document.getElementById('loginError');
   errEl.textContent = '';
-  if (!username || !password) { errEl.textContent = 'Enter username and password.'; return; }
+  if (!email || !password) { errEl.textContent = 'Enter email and password.'; return; }
   try {
     const hash = await sha256(password);
     const snap = await usersRef.once('value');
     const users = snap.val() || {};
     const entry = Object.entries(users).find(([,u]) =>
-      (u.username||'').toLowerCase() === username && u.passwordHash === hash);
+      (u.email||u.username||'').toLowerCase() === email && u.passwordHash === hash);
     if (!entry) {
-      errEl.textContent = 'Invalid username or password.';
+      errEl.textContent = 'Invalid email or password.';
       document.getElementById('loginPass').value = '';
       document.getElementById('loginPass').classList.add('shake');
       setTimeout(() => document.getElementById('loginPass').classList.remove('shake'), 400);
@@ -528,7 +519,7 @@ async function loginAsync() {
     }
     const [fuid, user] = entry;
     if (user.role === 'pending') { errEl.textContent = 'Account pending. Contact admin to activate.'; return; }
-    session = { username: user.username, role: user.role, salesman: user.salesman||null, uid: fuid };
+    session = { name: user.name||user.username, email: user.email||user.username, role: user.role, salesman: user.salesman||null, uid: fuid };
     sessionStorage.setItem('iht_session', JSON.stringify(session));
     document.getElementById('authOverlay').classList.remove('open');
     onLoggedIn();
@@ -536,34 +527,36 @@ async function loginAsync() {
 }
 
 async function registerAsync() {
-  const username = document.getElementById('regUser').value.trim().toLowerCase();
+  const name    = document.getElementById('regName').value.trim();
+  const email   = document.getElementById('regEmail').value.trim().toLowerCase();
   const password = document.getElementById('regPass').value;
   const confirm  = document.getElementById('regConfirm').value;
   const errEl = document.getElementById('regError');
   const msgEl = document.getElementById('regMsg');
   errEl.textContent = ''; msgEl.textContent = '';
-  if (!username || !password) { errEl.textContent = 'Fill all fields.'; return; }
-  if (password.length < 4)    { errEl.textContent = 'Password must be at least 4 characters.'; return; }
-  if (password !== confirm)   { errEl.textContent = 'Passwords do not match.'; return; }
+  if (!name || !email || !password) { errEl.textContent = 'Fill all fields.'; return; }
+  if (password.length < 4)          { errEl.textContent = 'Password must be at least 4 characters.'; return; }
+  if (password !== confirm)         { errEl.textContent = 'Passwords do not match.'; return; }
   try {
     const hash = await sha256(password);
     const snap = await usersRef.once('value');
     const users = snap.val() || {};
-    if (Object.values(users).some(u => (u.username||'').toLowerCase() === username)) {
-      errEl.textContent = 'Username already taken.'; return;
+    if (Object.values(users).some(u => (u.email||u.username||'').toLowerCase() === email)) {
+      errEl.textContent = 'Email already registered.'; return;
     }
     const isFirst = Object.keys(users).length === 0;
     const role = isFirst ? 'admin' : 'pending';
     const newUid = uid();
-    await usersRef.child(newUid).set({ username, passwordHash: hash, role, salesman: null, createdAt: Date.now() });
+    await usersRef.child(newUid).set({ name, email, passwordHash: hash, role, salesman: null, createdAt: Date.now() });
     if (isFirst) {
-      session = { username, role: 'admin', salesman: null, uid: newUid };
+      session = { name, email, role: 'admin', salesman: null, uid: newUid };
       sessionStorage.setItem('iht_session', JSON.stringify(session));
       document.getElementById('authOverlay').classList.remove('open');
       onLoggedIn();
     } else {
       msgEl.textContent = 'Account created! Waiting for admin to activate.';
-      document.getElementById('regUser').value = '';
+      document.getElementById('regName').value = '';
+      document.getElementById('regEmail').value = '';
       document.getElementById('regPass').value = '';
       document.getElementById('regConfirm').value = '';
     }
@@ -578,6 +571,7 @@ function logout() {
   if (fbRef) fbRef.off();
   setSyncStatus('offline');
   showLoginScreen();
+  document.getElementById('loginEmail').value = '';
   document.getElementById('loginPass').value = '';
 }
 
@@ -587,7 +581,7 @@ function applyRoleToUI() {
   const badge = document.getElementById('roleBadge');
   badge.textContent = session.role.toUpperCase();
   badge.className = 'role-badge ' + session.role;
-  document.getElementById('userLabel').textContent = session.username;
+  document.getElementById('userLabel').textContent = session.name||session.email;
   document.getElementById('userInfo').style.display = 'flex';
 }
 
@@ -1221,7 +1215,7 @@ function renderUserMgmt() {
     const isSelf = fuid === session.uid;
     const smSel = state.salesmen.map(s => `<option value="${s}"${u.salesman===s?' selected':''}>${s}</option>`).join('');
     return `<tr>
-      <td style="font-weight:600;color:#fff">${u.username}${isSelf?' <span class="self-badge">YOU</span>':''}</td>
+      <td style="font-weight:600;color:#fff">${u.name||u.username||'—'}${isSelf?' <span class="self-badge">YOU</span>':''}<br><span style="font-size:11px;color:#555;font-weight:400">${u.email||''}</span></td>
       <td>
         ${isPending ? '<span class="pending-badge">PENDING</span><br>' : ''}
         <select class="user-sel" id="rsel-${fuid}" ${isSelf?'disabled':''} onchange="onRoleChange('${fuid}',this.value)">

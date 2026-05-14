@@ -321,6 +321,7 @@
   <div class="user-info" id="userInfo" style="display:none">
     <span class="role-badge" id="roleBadge"></span>
     <span class="user-name" id="userLabel"></span>
+    <button class="btn-logout" onclick="openProfileModal()" title="My Profile">⚙</button>
     <button class="btn-logout" onclick="logout()">Logout</button>
   </div>
 </header>
@@ -507,6 +508,18 @@
   </div>
 </div>
 
+<!-- Profile Modal -->
+<div class="modal-bg" id="profileBg">
+  <div class="modal" style="max-width:400px">
+    <h2>⚙ My Profile</h2>
+    <div id="profileContent"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeProfileModal()">Close</button>
+      <button class="btn-confirm" onclick="saveMyTelegram()">Save</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const STORAGE_KEY = 'hydrotech_invoices_v1';
 let session      = null;
@@ -596,7 +609,7 @@ async function loginAsync() {
     }
     const [fuid, user] = entry;
     if (user.role === 'pending') { errEl.textContent = 'Account pending. Contact admin to activate.'; return; }
-    session = { name: user.name||user.username, email: user.email||user.username, role: user.role, salesman: user.salesman||null, uid: fuid };
+    session = { name: user.name||user.username, email: user.email||user.username, role: user.role, salesman: user.salesman||null, uid: fuid, telegramChatId: user.telegramChatId||null };
     sessionStorage.setItem('iht_session', JSON.stringify(session));
     document.getElementById('authOverlay').classList.remove('open');
     onLoggedIn();
@@ -1365,11 +1378,6 @@ function renderUserMgmt() {
           <option value="">—</option>${smSel}
         </select>
       </td>
-      <td>
-        <input type="text" class="user-sel" id="tsel-${fuid}" placeholder="e.g. 123456789"
-          value="${u.telegramChatId||''}" ${isSelf?'disabled':''}
-          style="width:110px;font-size:12px" title="Telegram Chat ID">
-      </td>
       <td style="color:#555;font-size:12px">${u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-MY') : '—'}</td>
       <td style="text-align:right;white-space:nowrap">
         ${isPending ? `<button class="btn-activate" onclick="activateUser('${fuid}')">✓ Activate</button>` :
@@ -1391,7 +1399,7 @@ function renderUserMgmt() {
     </div>` : '';
 
   content.innerHTML = botSection + `<table class="user-table">
-    <thead><tr><th>Username</th><th>Role</th><th>Salesman</th><th>Telegram ID</th><th>Created</th><th></th></tr></thead>
+    <thead><tr><th>Username</th><th>Role</th><th>Salesman</th><th>Created</th><th></th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }
@@ -1406,11 +1414,9 @@ async function activateUser(fuid) {
   if (!role || role==='') { alert('Select a role before activating.'); return; }
   const salesman = document.getElementById('ssel-'+fuid).value || null;
   if (role==='salesman' && !salesman) { alert('Select which salesman this user is.'); return; }
-  const telegramChatId = document.getElementById('tsel-'+fuid).value.trim() || null;
   usersCache[fuid].role = role;
   usersCache[fuid].salesman = salesman;
-  usersCache[fuid].telegramChatId = telegramChatId;
-  await usersRef.child(fuid).update({ role, salesman: salesman||null, telegramChatId: telegramChatId||null });
+  await usersRef.child(fuid).update({ role, salesman: salesman||null });
   rebuildChatIds(usersCache);
   renderUserMgmt();
 }
@@ -1419,11 +1425,9 @@ async function saveUserRole(fuid) {
   const role = document.getElementById('rsel-'+fuid).value;
   const salesman = document.getElementById('ssel-'+fuid).value || null;
   if (role==='salesman' && !salesman) { alert('Select which salesman this user is.'); return; }
-  const telegramChatId = document.getElementById('tsel-'+fuid).value.trim() || null;
   usersCache[fuid].role = role;
   usersCache[fuid].salesman = salesman;
-  usersCache[fuid].telegramChatId = telegramChatId;
-  await usersRef.child(fuid).update({ role, salesman: salesman||null, telegramChatId: telegramChatId||null });
+  await usersRef.child(fuid).update({ role, salesman: salesman||null });
   rebuildChatIds(usersCache);
   renderUserMgmt();
 }
@@ -1503,6 +1507,46 @@ function mergeBackup() {
     r.readAsText(f);
   };
   inp.click();
+}
+
+// ---- Profile ----
+function openProfileModal() {
+  if (!session) return;
+  document.getElementById('profileContent').innerHTML = `
+    <div class="form-row">
+      <label>Name</label>
+      <input type="text" value="${session.name||''}" disabled style="opacity:.6">
+    </div>
+    <div class="form-row">
+      <label>Email</label>
+      <input type="text" value="${session.email||''}" disabled style="opacity:.6">
+    </div>
+    <div class="section-divider">Telegram Notifications</div>
+    <div class="form-row">
+      <label>Your Telegram Chat ID</label>
+      <input type="text" id="myTelegramId" placeholder="e.g. 123456789"
+        value="${session.telegramChatId||''}" inputmode="numeric">
+    </div>
+    <p style="font-size:12px;color:#555;margin-top:6px;line-height:1.5">
+      Don't know your Chat ID?<br>
+      Open Telegram → search <b style="color:#4fc3f7">@userinfobot</b> → press Start.<br>
+      It replies instantly with your ID number.
+    </p>`;
+  document.getElementById('profileBg').classList.add('open');
+  setTimeout(() => document.getElementById('myTelegramId').focus(), 100);
+}
+function closeProfileModal() {
+  document.getElementById('profileBg').classList.remove('open');
+}
+async function saveMyTelegram() {
+  const chatId = document.getElementById('myTelegramId').value.trim() || null;
+  session.telegramChatId = chatId;
+  sessionStorage.setItem('iht_session', JSON.stringify(session));
+  await usersRef.child(session.uid).update({ telegramChatId: chatId||null });
+  // Refresh chat ID map
+  usersRef.once('value').then(snap => rebuildChatIds(snap.val() || {}));
+  closeProfileModal();
+  alert(chatId ? 'Telegram Chat ID saved. You will now receive notifications.' : 'Telegram Chat ID cleared.');
 }
 
 // ---- Comments ----
@@ -1587,7 +1631,7 @@ function init() {
 
 document.addEventListener('keydown', e => {
   if (e.key==='Escape') {
-    closeInvoiceModal(); closePaymentModal(); closeCommentsModal();
+    closeInvoiceModal(); closePaymentModal(); closeCommentsModal(); closeProfileModal();
     document.getElementById('commissionBg').classList.remove('open');
     document.getElementById('userMgmtBg').classList.remove('open');
   }

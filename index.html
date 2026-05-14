@@ -959,7 +959,7 @@ function renderList() {
         lastMonth = month;
         const [y,mo] = month.split('-');
         const mLabel = new Date(y, mo-1, 1).toLocaleString('en',{month:'long',year:'numeric'});
-        rows += `<tr class="month-group-row"><td colspan="9">${mLabel}</td></tr>`;
+        rows += `<tr class="month-group-row"><td colspan="10">${mLabel}</td></tr>`;
       }
     }
 
@@ -976,6 +976,7 @@ function renderList() {
       <td class="td-customer" title="${inv.customer||''}">${inv.customer||'—'}</td>
       <td class="td-po" title="${inv.projectRef||''}">${inv.projectRef||''}</td>
       <td class="td-agent">${inv.salesman||'—'}</td>
+      <td class="td-term" style="color:#666;font-size:11px">${inv.term||'—'}</td>
       <td class="td-days">${daysPill}</td>
       <td class="td-amount">${fmtRM(tp)}</td>
       <td class="td-bal">${balCell}</td>
@@ -990,6 +991,7 @@ function renderList() {
       <th>Customer</th>
       <th>P/O</th>
       <th>Agent</th>
+      <th>Term</th>
       <th style="text-align:center">Days</th>
       <th style="text-align:right">Amount</th>
       <th style="text-align:right">Balance</th>

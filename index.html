@@ -63,6 +63,10 @@
   .btn-commission:hover{background:#d68910}
   .btn-backup{background:#8e44ad;color:#fff}
   .btn-backup:hover{filter:brightness(1.15)}
+  .btn-adj-notify{background:#e67e22;color:#fff;animation:pulse .9s infinite}
+  .btn-adj-notify:hover,.btn-adj-notify.active{animation:none;filter:brightness(1.15)}
+  .btn-adj-notify.active{background:#c0392b}
+  body:not([data-role="admin"]) .btn-adj-notify{display:none!important}
 
   .empty-list{color:#555;font-size:13px;padding:40px 0;text-align:center}
 
@@ -400,6 +404,7 @@
 <div class="toolbar">
   <button class="btn-add" onclick="openInvoiceModal()">+ Add Invoice</button>
   <button class="btn-commission" onclick="openCommission()">📊 Agent Report</button>
+  <button class="btn-adj-notify" id="adjNotifyBtn" onclick="toggleAdjPendingFilter()" style="display:none">📅 <span id="adjNotifyCount"></span> Date Adj.</button>
   <button class="btn-usermgmt btn-backup" onclick="openUserMgmt()">👥 Users</button>
   <button class="btn-backup" onclick="exportBackup()">⬇ Backup</button>
   <button class="btn-backup" onclick="importBackup()" style="background:#6c3483">⬆ Restore</button>
@@ -635,8 +640,9 @@
 const STORAGE_KEY = 'hydrotech_invoices_v1';
 let session      = null;
 let commentsId   = null;
-let commTab      = 'summary';
-let dateAdjId    = null;
+let commTab         = 'summary';
+let dateAdjId       = null;
+let adjPendingFilter = false;
 let appSettings  = {};            // { telegramBotToken }
 let salesmanChatIds = {};         // { salesmanName: chatId }
 
@@ -1024,6 +1030,7 @@ function renderList() {
     if (currentFilter!=='all' && s!==currentFilter) return false;
     if (smF && inv.salesman!==smF) return false;
     if (mF && !(inv.invoiceDate||'').startsWith(mF)) return false;
+    if (adjPendingFilter && !(inv.dateAdjReq && inv.dateAdjReq.status==='pending')) return false;
     if (search) {
       const hay = [inv.invoiceNo,inv.customer,inv.contact,inv.projectRef,inv.salesman,inv.notes].join(' ').toLowerCase();
       if (!hay.includes(search)) return false;
@@ -1130,6 +1137,7 @@ function renderList() {
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
+  updateAdjNotifyBadge();
 }
 
 function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
@@ -1625,6 +1633,22 @@ function renderCommissionPage() {
   </div>`;
 
   content.innerHTML = html;
+}
+
+function updateAdjNotifyBadge() {
+  if (!session || session.role !== 'admin') return;
+  const count = state.invoices.filter(inv => inv.dateAdjReq && inv.dateAdjReq.status === 'pending').length;
+  const btn = document.getElementById('adjNotifyBtn');
+  if (!btn) return;
+  document.getElementById('adjNotifyCount').textContent = count;
+  btn.style.display = count > 0 ? '' : 'none';
+  if (count === 0 && adjPendingFilter) { adjPendingFilter = false; btn.classList.remove('active'); }
+}
+
+function toggleAdjPendingFilter() {
+  adjPendingFilter = !adjPendingFilter;
+  document.getElementById('adjNotifyBtn').classList.toggle('active', adjPendingFilter);
+  renderList();
 }
 
 // ---- Date Adjustment ----

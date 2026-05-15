@@ -1087,7 +1087,8 @@ function renderList() {
     if (mF && !(inv.invoiceDate||'').startsWith(mF)) return false;
     if (adjPendingFilter && !(inv.dateAdjReq && inv.dateAdjReq.status==='pending')) return false;
     if (search) {
-      const hay = [inv.invoiceNo,inv.customer,inv.contact,inv.projectRef,inv.salesman,inv.notes].join(' ').toLowerCase();
+      const tp = totalPayable(inv);
+      const hay = [inv.invoiceNo,inv.customer,inv.contact,inv.projectRef,inv.salesman,inv.notes,String(tp),tp.toFixed(2)].join(' ').toLowerCase();
       if (!hay.includes(search)) return false;
     }
     return true;

@@ -582,7 +582,8 @@
       <textarea id="fAdjReqReason" placeholder="Explain why the effective date should be adjusted (e.g. client rejected invoice due to wrong item, issue resolved on this date)..." style="min-height:90px"></textarea>
     </div>
     <div class="modal-actions">
-      <button class="btn-cancel" onclick="closeDateAdjRequest()">Cancel</button>
+      <button class="btn-cancel" onclick="closeDateAdjRequest()">Close</button>
+      <button id="btnRemoveAdjReq" style="display:none;background:#e94560;border:none;border-radius:6px;padding:8px 18px;cursor:pointer;font-weight:600;font-size:13px;color:#fff" onclick="cancelDateAdjRequest()">Remove Request</button>
       <button class="btn-confirm" onclick="submitDateAdjRequest()">Submit Request</button>
     </div>
   </div>
@@ -1055,12 +1056,15 @@ function renderList() {
     const adjReq = inv.dateAdjReq;
     const isOwnInv = session && session.role==='salesman' && session.salesman===inv.salesman;
     const canReqAdj = isOwnInv && (!adjReq || adjReq.status==='rejected');
+    const canEditAdj = isOwnInv && adjReq && adjReq.status==='pending';
     const hasPendingAdj = session && session.role==='admin' && adjReq && adjReq.status==='pending';
     const adjBtn = canReqAdj
       ? `<button class="btn-adj-req" title="Request date adjustment" onclick="openDateAdjRequest('${inv.id}')">📅</button>`
-      : hasPendingAdj
-        ? `<button class="btn-adj-review" title="Review date adjustment request" onclick="openDateAdjReview('${inv.id}')">📅⚠</button>`
-        : '';
+      : canEditAdj
+        ? `<button class="btn-adj-req" title="Edit or remove your pending request" onclick="openDateAdjRequest('${inv.id}')">📅✎</button>`
+        : hasPendingAdj
+          ? `<button class="btn-adj-review" title="Review date adjustment request" onclick="openDateAdjReview('${inv.id}')">📅⚠</button>`
+          : '';
     const dateDisplay = inv.adjustedDate
       ? `${fmtDate(inv.invoiceDate)}<div class="adj-date-box"><span class="adj-badge">ADJ</span>${fmtDate(inv.adjustedDate)}</div>`
       : adjReq && adjReq.status==='pending'
@@ -1130,9 +1134,11 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
     const isOwnInvC = session && session.role==='salesman' && session.salesman===inv.salesman;
     const adjBtnC = (isOwnInvC && (!adjReqC || adjReqC.status==='rejected'))
       ? `<button class="btn-adj-req" onclick="openDateAdjRequest('${inv.id}')">📅</button>`
-      : (session && session.role==='admin' && adjReqC && adjReqC.status==='pending')
-        ? `<button class="btn-adj-review" onclick="openDateAdjReview('${inv.id}')">📅⚠</button>`
-        : '';
+      : (isOwnInvC && adjReqC && adjReqC.status==='pending')
+        ? `<button class="btn-adj-req" onclick="openDateAdjRequest('${inv.id}')">📅✎</button>`
+        : (session && session.role==='admin' && adjReqC && adjReqC.status==='pending')
+          ? `<button class="btn-adj-review" onclick="openDateAdjReview('${inv.id}')">📅⚠</button>`
+          : '';
     const acts = `
       <div class="inv-card-acts">
         ${showPay ? `<button class="btn-rp" onclick="openPaymentModal('${inv.id}')">💰 Payment</button>` : ''}
@@ -1606,12 +1612,15 @@ function openDateAdjRequest(id) {
   dateAdjId = id;
   const inv = state.invoices.find(i => i.id === id);
   if (!inv) return;
+  const existing = inv.dateAdjReq && inv.dateAdjReq.status === 'pending' ? inv.dateAdjReq : null;
   document.getElementById('dateAdjReqInfo').innerHTML = `
     <div class="adj-info-row"><span class="adj-info-label">Invoice</span><span class="adj-info-val">${inv.invoiceNo||'—'}</span></div>
     <div class="adj-info-row"><span class="adj-info-label">Customer</span><span class="adj-info-val">${inv.customer||'—'}</span></div>
     <div class="adj-info-row"><span class="adj-info-label">Invoice Date</span><span class="adj-info-val">${fmtDate(inv.invoiceDate)}</span></div>`;
-  document.getElementById('fAdjReqDate').value = inv.invoiceDate || isoToday();
-  document.getElementById('fAdjReqReason').value = '';
+  document.getElementById('fAdjReqDate').value = existing ? existing.requestedDate : (inv.invoiceDate || isoToday());
+  document.getElementById('fAdjReqReason').value = existing ? existing.reason : '';
+  document.getElementById('btnRemoveAdjReq').style.display = existing ? 'inline-block' : 'none';
+  document.querySelector('#dateAdjRequestBg h2').textContent = existing ? '📅 Edit Date Adjustment Request' : '📅 Request Date Adjustment';
   document.getElementById('dateAdjRequestBg').classList.add('open');
 }
 function closeDateAdjRequest() {
@@ -1625,11 +1634,20 @@ function submitDateAdjRequest() {
   const reason = document.getElementById('fAdjReqReason').value.trim();
   if (!requestedDate) { alert('Please select a requested effective date.'); return; }
   if (!reason) { alert('Please provide a reason for the adjustment.'); return; }
-  inv.dateAdjReq = { requestedDate, reason, requestedBy: session.name||session.email, requestedAt: Date.now(), status: 'pending' };
+  const isEdit = inv.dateAdjReq && inv.dateAdjReq.status === 'pending';
+  inv.dateAdjReq = { requestedDate, reason, requestedBy: session.name||session.email, requestedAt: isEdit ? inv.dateAdjReq.requestedAt : Date.now(), updatedAt: isEdit ? Date.now() : undefined, status: 'pending' };
   inv.updatedAt = Date.now();
   persistState(); renderList();
   closeDateAdjRequest();
-  alert('Request submitted. Admin will review and approve the date adjustment.');
+}
+function cancelDateAdjRequest() {
+  const inv = state.invoices.find(i => i.id === dateAdjId);
+  if (!inv) return;
+  if (!confirm('Remove this date adjustment request?')) return;
+  inv.dateAdjReq = null;
+  inv.updatedAt = Date.now();
+  persistState(); renderList();
+  closeDateAdjRequest();
 }
 
 function openDateAdjReview(id) {

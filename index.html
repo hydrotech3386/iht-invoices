@@ -1635,6 +1635,27 @@ function renderCommissionPage() {
   content.innerHTML = html;
 }
 
+async function persistDateAdjReq(invId) {
+  if (!fbReady) return;
+  const idx = state.invoices.findIndex(i => i.id === invId);
+  if (idx === -1) return;
+  const inv = state.invoices[idx];
+  const now = Date.now();
+  state.lastModified = now;
+  setSyncStatus('syncing');
+  try {
+    await fbRef.child('invoices/' + idx).update({
+      dateAdjReq: inv.dateAdjReq !== undefined ? inv.dateAdjReq : null,
+      updatedAt: inv.updatedAt
+    });
+    await fbRef.child('lastModified').set(now);
+    setSyncStatus('synced');
+  } catch(e) {
+    console.error('persistDateAdjReq error:', e);
+    setSyncStatus('offline');
+  }
+}
+
 function updateAdjNotifyBadge() {
   if (!session || session.role !== 'admin') return;
   const count = state.invoices.filter(inv => inv.dateAdjReq && inv.dateAdjReq.status === 'pending').length;
@@ -1709,14 +1730,14 @@ function renderAdjExistingAttachments(inv, editable) {
     }).join('');
 }
 
-function removeExistingAdjAttachment(idx) {
+async function removeExistingAdjAttachment(idx) {
   const inv = state.invoices.find(i => i.id === dateAdjId);
   if (!inv || !inv.dateAdjReq || !inv.dateAdjReq.attachments) return;
   const att = inv.dateAdjReq.attachments[idx];
   if (!att || !confirm(`Remove "${att.name}"?`)) return;
   inv.dateAdjReq.attachments.splice(idx, 1);
   inv.updatedAt = Date.now();
-  persistState();
+  await persistDateAdjReq(dateAdjId);
   renderAdjExistingAttachments(inv, true);
 }
 
@@ -1814,7 +1835,8 @@ async function submitDateAdjRequest() {
       attachments: [...existingAtts, ...newAtts]
     };
     inv.updatedAt = Date.now();
-    persistState(); renderList();
+    await persistDateAdjReq(dateAdjId);
+    renderList();
     closeDateAdjRequest();
   } catch(e) {
     alert('Upload failed: ' + e.message);
@@ -1822,13 +1844,14 @@ async function submitDateAdjRequest() {
     btn.disabled = false; btn.textContent = 'Submit Request';
   }
 }
-function cancelDateAdjRequest() {
+async function cancelDateAdjRequest() {
   const inv = state.invoices.find(i => i.id === dateAdjId);
   if (!inv) return;
   if (!confirm('Remove this date adjustment request?')) return;
   inv.dateAdjReq = null;
   inv.updatedAt = Date.now();
-  persistState(); renderList();
+  await persistDateAdjReq(dateAdjId);
+  renderList();
   closeDateAdjRequest();
 }
 

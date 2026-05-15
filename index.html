@@ -642,18 +642,19 @@
 <!-- Date Adjustment Review Modal (Admin) -->
 <div class="modal-bg" id="dateAdjReviewBg">
   <div class="modal" style="max-width:520px">
-    <h2>📅 Review Date Adjustment</h2>
+    <h2 id="dateAdjReviewTitle">📅 Review Date Adjustment</h2>
     <div class="adj-info-box" id="dateAdjReviewInfo"></div>
     <div id="dateAdjReviewAttachments"></div>
-    <div class="section-divider">Approve Effective Date</div>
+    <div class="section-divider" id="dateAdjReviewDivider">Effective Date</div>
     <div class="form-row">
       <label>Effective Date</label>
       <input type="date" id="fAdjApproveDate">
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeDateAdjReview()">Cancel</button>
-      <button style="background:#e94560;border:none;border-radius:6px;padding:8px 18px;cursor:pointer;font-weight:600;font-size:13px;color:#fff" onclick="rejectDateAdj()">Reject</button>
-      <button class="btn-confirm" onclick="approveDateAdj()">Approve</button>
+      <button id="btnAdjRemove" style="display:none;background:#e94560;border:none;border-radius:6px;padding:8px 18px;cursor:pointer;font-weight:600;font-size:13px;color:#fff" onclick="removeAdjustment()">Remove Adjustment</button>
+      <button id="btnAdjReject" style="background:#e94560;border:none;border-radius:6px;padding:8px 18px;cursor:pointer;font-weight:600;font-size:13px;color:#fff" onclick="rejectDateAdj()">Reject</button>
+      <button id="btnAdjApprove" class="btn-confirm" onclick="approveDateAdj()">Approve</button>
     </div>
   </div>
 </div>
@@ -1111,13 +1112,16 @@ function renderList() {
     const canReqAdj = isOwnInv && (!adjReq || adjReq.status==='rejected');
     const canEditAdj = isOwnInv && adjReq && adjReq.status==='pending';
     const hasPendingAdj = session && session.role==='admin' && adjReq && adjReq.status==='pending';
+    const hasApprovedAdj = session && session.role==='admin' && inv.adjustedDate;
     const adjBtn = canReqAdj
       ? `<button class="btn-adj-req" title="Request date adjustment" onclick="openDateAdjRequest('${inv.id}')">📅</button>`
       : canEditAdj
         ? `<button class="btn-adj-req" title="Edit or remove your pending request" onclick="openDateAdjRequest('${inv.id}')">📅✎</button>`
         : hasPendingAdj
           ? `<button class="btn-adj-review" title="Review date adjustment request" onclick="openDateAdjReview('${inv.id}')">📅⚠</button>`
-          : '';
+          : hasApprovedAdj
+            ? `<button class="btn-adj-review" title="Edit or remove date adjustment" onclick="openDateAdjReview('${inv.id}')">📅✎</button>`
+            : '';
     const dateDisplay = inv.adjustedDate
       ? `${fmtDate(inv.invoiceDate)}<div class="adj-date-box"><span class="adj-badge">ADJ</span>${fmtDate(inv.adjustedDate)}</div>`
       : adjReq && adjReq.status==='pending'
@@ -1192,7 +1196,9 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
         ? `<button class="btn-adj-req" onclick="openDateAdjRequest('${inv.id}')">📅✎</button>`
         : (session && session.role==='admin' && adjReqC && adjReqC.status==='pending')
           ? `<button class="btn-adj-review" onclick="openDateAdjReview('${inv.id}')">📅⚠</button>`
-          : '';
+          : (session && session.role==='admin' && inv.adjustedDate)
+            ? `<button class="btn-adj-review" title="Edit or remove date adjustment" onclick="openDateAdjReview('${inv.id}')">📅✎</button>`
+            : '';
     const acts = `
       <div class="inv-card-acts">
         ${showPay ? `<button class="btn-rp" onclick="openPaymentModal('${inv.id}')">💰 Payment</button>` : ''}
@@ -1929,18 +1935,44 @@ async function cancelDateAdjRequest() {
 function openDateAdjReview(id) {
   dateAdjId = id;
   const inv = state.invoices.find(i => i.id === id);
-  if (!inv || !inv.dateAdjReq) return;
+  if (!inv) return;
   const req = inv.dateAdjReq;
-  const submittedAt = req.requestedAt ? new Date(req.requestedAt).toLocaleString('en-MY',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+  const isApproved = !!inv.adjustedDate;
   const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  document.getElementById('dateAdjReviewInfo').innerHTML = `
+
+  document.getElementById('dateAdjReviewTitle').textContent = isApproved ? '📅 Edit Date Adjustment' : '📅 Review Date Adjustment';
+  document.getElementById('dateAdjReviewDivider').textContent = isApproved ? 'Effective Date' : 'Approve Effective Date';
+
+  let infoHtml = `
     <div class="adj-info-row"><span class="adj-info-label">Invoice</span><span class="adj-info-val">${inv.invoiceNo||'—'} — ${esc(inv.customer)}</span></div>
-    <div class="adj-info-row"><span class="adj-info-label">Invoice Date</span><span class="adj-info-val">${fmtDate(inv.invoiceDate)}</span></div>
-    <div class="adj-info-row"><span class="adj-info-label">Requested Date</span><span class="adj-info-val" style="color:#f39c12">${fmtDate(req.requestedDate)}</span></div>
-    <div class="adj-info-row"><span class="adj-info-label">Requested by</span><span class="adj-info-val">${esc(req.requestedBy)}</span></div>
-    <div class="adj-info-row"><span class="adj-info-label">Submitted</span><span class="adj-info-val">${submittedAt}</span></div>
-    <div style="margin-top:6px"><div class="adj-info-label" style="margin-bottom:4px">Reason</div><div class="adj-reason-box">${esc(req.reason)}</div></div>`;
-  document.getElementById('fAdjApproveDate').value = req.requestedDate || inv.invoiceDate;
+    <div class="adj-info-row"><span class="adj-info-label">Invoice Date</span><span class="adj-info-val">${fmtDate(inv.invoiceDate)}</span></div>`;
+  if (isApproved) {
+    infoHtml += `<div class="adj-info-row"><span class="adj-info-label">Current Effective Date</span><span class="adj-info-val" style="color:#2ecc71">${fmtDate(inv.adjustedDate)}</span></div>`;
+  }
+  if (req) {
+    const submittedAt = req.requestedAt ? new Date(req.requestedAt).toLocaleString('en-MY',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+    infoHtml += `
+      <div class="adj-info-row"><span class="adj-info-label">Requested Date</span><span class="adj-info-val" style="color:#f39c12">${fmtDate(req.requestedDate)}</span></div>
+      <div class="adj-info-row"><span class="adj-info-label">Requested by</span><span class="adj-info-val">${esc(req.requestedBy)}</span></div>
+      <div class="adj-info-row"><span class="adj-info-label">Submitted</span><span class="adj-info-val">${submittedAt}</span></div>
+      <div style="margin-top:6px"><div class="adj-info-label" style="margin-bottom:4px">Reason</div><div class="adj-reason-box">${esc(req.reason)}</div></div>`;
+  }
+  document.getElementById('dateAdjReviewInfo').innerHTML = infoHtml;
+  document.getElementById('fAdjApproveDate').value = inv.adjustedDate || (req && req.requestedDate) || inv.invoiceDate;
+
+  const btnRemove = document.getElementById('btnAdjRemove');
+  const btnReject = document.getElementById('btnAdjReject');
+  const btnApprove = document.getElementById('btnAdjApprove');
+  if (isApproved) {
+    btnRemove.style.display = 'inline-block';
+    btnReject.style.display = 'none';
+    btnApprove.textContent = 'Update Date';
+  } else {
+    btnRemove.style.display = 'none';
+    btnReject.style.display = 'inline-block';
+    btnApprove.textContent = 'Approve';
+  }
+
   renderAdjExistingAttachments(inv, false);
   document.getElementById('dateAdjReviewBg').classList.add('open');
 }
@@ -1952,9 +1984,9 @@ function approveDateAdj() {
   const inv = state.invoices.find(i => i.id === dateAdjId);
   if (!inv) return;
   const approvedDate = document.getElementById('fAdjApproveDate').value;
-  if (!approvedDate) { alert('Please set the effective date to approve.'); return; }
+  if (!approvedDate) { alert('Please set the effective date.'); return; }
   inv.adjustedDate = approvedDate;
-  inv.dateAdjReq = { ...inv.dateAdjReq, status: 'approved', approvedDate, approvedBy: session.name||session.email, approvedAt: Date.now() };
+  inv.dateAdjReq = { ...(inv.dateAdjReq||{}), status: 'approved', approvedDate, approvedBy: session.name||session.email, approvedAt: Date.now() };
   inv.updatedAt = Date.now();
   persistState(); renderList();
   closeDateAdjReview();
@@ -1963,6 +1995,16 @@ function rejectDateAdj() {
   const inv = state.invoices.find(i => i.id === dateAdjId);
   if (!inv) return;
   if (!confirm('Reject this request? The salesman can submit a new request.')) return;
+  inv.dateAdjReq = null;
+  inv.updatedAt = Date.now();
+  persistState(); renderList();
+  closeDateAdjReview();
+}
+function removeAdjustment() {
+  const inv = state.invoices.find(i => i.id === dateAdjId);
+  if (!inv) return;
+  if (!confirm('Remove this date adjustment? The invoice will revert to its original date.')) return;
+  inv.adjustedDate = null;
   inv.dateAdjReq = null;
   inv.updatedAt = Date.now();
   persistState(); renderList();

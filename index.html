@@ -1659,22 +1659,17 @@ function renderCommissionPage() {
 
 async function persistDateAdjReq(invId) {
   if (!fbReady) return;
-  const idx = state.invoices.findIndex(i => i.id === invId);
-  if (idx === -1) return;
-  const inv = state.invoices[idx];
-  const now = Date.now();
-  state.lastModified = now;
+  if (!state.invoices.find(i => i.id === invId)) return;
+  state.lastModified = Date.now();
+  const toSave = JSON.parse(JSON.stringify(state));
   setSyncStatus('syncing');
   try {
-    await fbRef.child('invoices/' + idx).update({
-      dateAdjReq: inv.dateAdjReq !== undefined ? inv.dateAdjReq : null,
-      updatedAt: inv.updatedAt
-    });
-    await fbRef.child('lastModified').set(now);
+    await fbRef.set(toSave);
     setSyncStatus('synced');
   } catch(e) {
     console.error('persistDateAdjReq error:', e);
     setSyncStatus('offline');
+    alert('Failed to save your request. Please check your connection and try again.');
   }
 }
 

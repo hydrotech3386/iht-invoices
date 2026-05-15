@@ -836,7 +836,8 @@ function applyRoleToUI() {
 
 function onLoggedIn() {
   applyRoleToUI();
-  if (!fbReady) { renderSalesmanFilter(); renderMonthFilter(); renderSummary(); renderList(); return; }
+  renderSalesmanFilter(); renderMonthFilter(); renderSummary(); renderList();
+  if (!fbReady) return;
   // Load Telegram settings and chat ID map
   firebase.database().ref('appSettings').once('value').then(snap => {
     if (snap.val()) Object.assign(appSettings, snap.val());

@@ -165,6 +165,9 @@
   body[data-role="salesman"] .btn-commission { display:none }
   body[data-role="salesman"] #salesmanFilter { display:none }
   body:not([data-role="salesman"]) .btn-my-adj-req { display:none }
+  .btn-all-adj-req{background:#6c3483;color:#fff}
+  .btn-all-adj-req:hover{filter:brightness(1.15)}
+  body:not([data-role="admin"]) .btn-all-adj-req{display:none}
 
   /* User management */
   .user-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
@@ -268,6 +271,8 @@
   .btn-adj-req:hover{filter:brightness(1.2)}
   .btn-adj-review{background:#e67e22;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;padding:4px 9px;margin-left:3px;color:#fff;animation:pulse .9s infinite}
   .btn-adj-review:hover{filter:brightness(1.2);animation:none}
+  .btn-adj-edit{background:#1a6fa8;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;padding:4px 9px;margin-left:3px;color:#fff}
+  .btn-adj-edit:hover{filter:brightness(1.2)}
   .adj-info-box{background:#0a1628;border:1px solid #0f3460;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:12px}
   .adj-info-row{display:flex;gap:12px;margin-bottom:5px;align-items:flex-start}
   .adj-info-label{color:#555;font-size:11px;min-width:90px;padding-top:1px}
@@ -415,6 +420,7 @@
   <button class="btn-add" onclick="openInvoiceModal()">+ Add Invoice</button>
   <button class="btn-commission" onclick="openCommission()">📊 Agent Report</button>
   <button class="btn-my-adj-req" onclick="openMyAdjRequests()">📅 My Requests</button>
+  <button class="btn-all-adj-req" onclick="openAllAdjRequests()">📅 Requests</button>
   <button class="btn-adj-notify" id="adjNotifyBtn" onclick="toggleAdjPendingFilter()" style="display:none">📅 <span id="adjNotifyCount"></span> Date Adj.</button>
   <button class="btn-usermgmt btn-backup" onclick="openUserMgmt()">👥 Users</button>
   <button class="btn-backup" onclick="exportBackup()">⬇ Backup</button>
@@ -601,6 +607,17 @@
     <div id="myAdjRequestsContent"></div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="document.getElementById('myAdjRequestsBg').classList.remove('open')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Date Adjustment All Requests Modal (Admin) -->
+<div class="modal-bg" id="allAdjRequestsBg">
+  <div class="modal" style="max-width:960px">
+    <h2>📅 Date Adjustment Requests</h2>
+    <div id="allAdjRequestsContent"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="document.getElementById('allAdjRequestsBg').classList.remove('open')">Close</button>
     </div>
   </div>
 </div>
@@ -1120,7 +1137,7 @@ function renderList() {
         : hasPendingAdj
           ? `<button class="btn-adj-review" title="Review date adjustment request" onclick="openDateAdjReview('${inv.id}')">📅⚠</button>`
           : hasApprovedAdj
-            ? `<button class="btn-adj-review" title="Edit or remove date adjustment" onclick="openDateAdjReview('${inv.id}')">📅✎</button>`
+            ? `<button class="btn-adj-edit" title="Edit or remove date adjustment" onclick="openDateAdjReview('${inv.id}')">📅✎</button>`
             : '';
     const dateDisplay = inv.adjustedDate
       ? `${fmtDate(inv.invoiceDate)}<div class="adj-date-box"><span class="adj-badge">ADJ</span>${fmtDate(inv.adjustedDate)}</div>`
@@ -1197,7 +1214,7 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
         : (session && session.role==='admin' && adjReqC && adjReqC.status==='pending')
           ? `<button class="btn-adj-review" onclick="openDateAdjReview('${inv.id}')">📅⚠</button>`
           : (session && session.role==='admin' && inv.adjustedDate)
-            ? `<button class="btn-adj-review" title="Edit or remove date adjustment" onclick="openDateAdjReview('${inv.id}')">📅✎</button>`
+            ? `<button class="btn-adj-edit" title="Edit or remove date adjustment" onclick="openDateAdjReview('${inv.id}')">📅✎</button>`
             : '';
     const acts = `
       <div class="inv-card-acts">
@@ -1731,6 +1748,66 @@ function openMyAdjRequests() {
     </table>`;
   }
   document.getElementById('myAdjRequestsBg').classList.add('open');
+}
+
+function openAllAdjRequests() {
+  const content = document.getElementById('allAdjRequestsContent');
+  const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  const requests = state.invoices
+    .filter(inv => inv.dateAdjReq || inv.adjustedDate)
+    .sort((a, b) => {
+      const order = { pending: 0, approved: 1 };
+      const sa = (a.dateAdjReq && order[a.dateAdjReq.status] != null) ? order[a.dateAdjReq.status] : 1;
+      const sb = (b.dateAdjReq && order[b.dateAdjReq.status] != null) ? order[b.dateAdjReq.status] : 1;
+      if (sa !== sb) return sa - sb;
+      const ta = (a.dateAdjReq && (a.dateAdjReq.updatedAt || a.dateAdjReq.requestedAt)) || 0;
+      const tb = (b.dateAdjReq && (b.dateAdjReq.updatedAt || b.dateAdjReq.requestedAt)) || 0;
+      return tb - ta;
+    });
+
+  if (!requests.length) {
+    content.innerHTML = '<div style="text-align:center;color:#555;padding:24px">No date adjustment requests.</div>';
+    document.getElementById('allAdjRequestsBg').classList.add('open');
+    return;
+  }
+
+  const rows = requests.map(inv => {
+    const req = inv.dateAdjReq;
+    const status = req ? req.status : 'approved';
+    const statusBadge = status === 'pending'
+      ? '<span class="adj-status-pending">⏳ Pending</span>'
+      : '<span class="adj-status-approved">✓ Approved</span>';
+    const submittedAt = req && req.requestedAt
+      ? new Date(req.requestedAt).toLocaleDateString('en-MY',{day:'2-digit',month:'short',year:'numeric'})
+      : '—';
+    const requestedDate = req ? fmtDate(req.requestedDate) : '—';
+    const effectiveDate = inv.adjustedDate ? `<span style="color:#5dfc8d">${fmtDate(inv.adjustedDate)}</span>` : '—';
+    const actionBtn = status === 'pending'
+      ? `<button class="btn-adj-review" style="animation:none;font-size:11px;padding:4px 10px" onclick="document.getElementById('allAdjRequestsBg').classList.remove('open');openDateAdjReview('${inv.id}')">Review</button>`
+      : `<button class="btn-adj-edit" style="font-size:11px;padding:4px 10px" onclick="document.getElementById('allAdjRequestsBg').classList.remove('open');openDateAdjReview('${inv.id}')">Edit</button>`;
+    return `<tr>
+      <td style="font-weight:600;color:#fff">${esc(inv.invoiceNo||'—')}</td>
+      <td style="color:#e0e0e0">${esc(inv.customer||'—')}</td>
+      <td style="color:#4fc3f7">${esc(inv.salesman||'—')}</td>
+      <td style="color:#f39c12">${requestedDate}</td>
+      <td>${effectiveDate}</td>
+      <td>${statusBadge}</td>
+      <td style="color:#aaa;font-size:11px">${esc(req && req.requestedBy || '—')}</td>
+      <td style="color:#555;font-size:11px">${submittedAt}</td>
+      <td>${actionBtn}</td>
+    </tr>`;
+  }).join('');
+
+  content.innerHTML = `<table class="my-adj-table">
+    <thead><tr>
+      <th>Invoice</th><th>Customer</th><th>Agent</th>
+      <th>Requested Date</th><th>Effective Date</th><th>Status</th>
+      <th>Requested By</th><th>Submitted</th><th></th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+  document.getElementById('allAdjRequestsBg').classList.add('open');
 }
 
 function updateAdjNotifyBadge() {
@@ -2306,6 +2383,7 @@ document.addEventListener('keydown', e => {
     closeInvoiceModal(); closePaymentModal(); closeCommentsModal(); closeProfileModal();
     closeDateAdjRequest(); closeDateAdjReview();
     document.getElementById('myAdjRequestsBg').classList.remove('open');
+    document.getElementById('allAdjRequestsBg').classList.remove('open');
     document.getElementById('commissionBg').classList.remove('open');
     document.getElementById('userMgmtBg').classList.remove('open');
   }

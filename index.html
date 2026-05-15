@@ -319,7 +319,6 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 </head>
 <body>
 
@@ -599,7 +598,7 @@
       <div id="adjExistingAttachments"></div>
       <div class="file-upload-area" onclick="document.getElementById('fAdjFiles').click()">
         📎 Click to attach photos or files
-        <div style="font-size:11px;margin-top:4px">Images &amp; PDFs · Max 10 MB each</div>
+        <div style="font-size:11px;margin-top:4px">Images (auto-compressed) · PDF max 500 KB</div>
       </div>
       <input type="file" id="fAdjFiles" multiple accept="image/*,.pdf" style="display:none" onchange="onAdjFilesSelected(this)">
       <div id="adjFilePreview"></div>
@@ -1636,9 +1635,7 @@ function effectiveDate(inv) {
 let adjSelectedFiles = [];
 
 function onAdjFilesSelected(input) {
-  const oversized = Array.from(input.files).filter(f => f.size > 10 * 1024 * 1024);
-  if (oversized.length) { alert(`Files exceeding 10MB were skipped:\n${oversized.map(f=>f.name).join('\n')}`); }
-  adjSelectedFiles = [...adjSelectedFiles, ...Array.from(input.files).filter(f => f.size <= 10*1024*1024)];
+  adjSelectedFiles = [...adjSelectedFiles, ...Array.from(input.files)];
   input.value = '';
   renderAdjFilePreview();
 }
@@ -1672,43 +1669,77 @@ function renderAdjExistingAttachments(inv, editable) {
   el.innerHTML = `<div style="font-size:11px;color:#aaa;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 4px">${label}</div>` +
     atts.map((a, i) => {
       const isImg = a.type && a.type.startsWith('image/');
+      const src = a.data || '';
       const thumb = isImg
-        ? `<img src="${a.url}" class="attachment-thumb" onclick="window.open('${a.url}','_blank')">`
+        ? `<img src="${src}" class="attachment-thumb" onclick="window.open('${src}','_blank')">`
         : `<span style="font-size:24px;flex-shrink:0">📄</span>`;
+      const dlHref = src ? `href="${src}" download="${a.name}"` : '';
       const removeBtn = editable
         ? `<button class="file-item-remove" title="Remove" onclick="removeExistingAdjAttachment(${i})">✕</button>`
         : '';
       return `<div class="attachment-item">
         ${thumb}
-        <a href="${a.url}" target="_blank" class="attachment-link">${a.name}</a>
-        <span class="file-item-size">${a.size ? (a.size/1024/1024).toFixed(1)+'MB' : ''}</span>
+        <a ${dlHref} class="attachment-link">${a.name}</a>
         ${removeBtn}
       </div>`;
     }).join('');
 }
 
-async function removeExistingAdjAttachment(idx) {
+function removeExistingAdjAttachment(idx) {
   const inv = state.invoices.find(i => i.id === dateAdjId);
   if (!inv || !inv.dateAdjReq || !inv.dateAdjReq.attachments) return;
   const att = inv.dateAdjReq.attachments[idx];
   if (!att || !confirm(`Remove "${att.name}"?`)) return;
-  try { await firebase.storage().refFromURL(att.url).delete(); } catch(e) { console.warn('Storage delete:', e); }
   inv.dateAdjReq.attachments.splice(idx, 1);
   inv.updatedAt = Date.now();
   persistState();
   renderAdjExistingAttachments(inv, true);
 }
 
-async function uploadAdjAttachments(invId, files) {
+async function compressImage(file) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 1200;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(img.width  * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.78));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function fileToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function processAdjFiles(files) {
   const results = [];
   for (let i = 0; i < files.length; i++) {
     const f = files[i];
-    document.getElementById('adjUploadProgress').textContent = `Uploading ${i+1}/${files.length}: ${f.name}…`;
-    const path = `date-adj-attachments/${invId}/${Date.now()}_${f.name}`;
-    const ref = firebase.storage().ref(path);
-    await ref.put(f);
-    const url = await ref.getDownloadURL();
-    results.push({ name: f.name, url, type: f.type, size: f.size });
+    document.getElementById('adjUploadProgress').textContent = `Processing ${i+1}/${files.length}: ${f.name}…`;
+    let data;
+    if (f.type.startsWith('image/')) {
+      data = await compressImage(f);
+    } else if (f.type === 'application/pdf') {
+      if (f.size > 500 * 1024) { alert(`"${f.name}" exceeds 500 KB and was skipped.`); continue; }
+      data = await fileToDataURL(f);
+    } else {
+      alert(`"${f.name}" is not a supported file type (images or PDF only).`); continue;
+    }
+    results.push({ name: f.name, type: f.type.startsWith('image/') ? 'image/jpeg' : f.type, data });
   }
   document.getElementById('adjUploadProgress').textContent = '';
   return results;
@@ -1747,7 +1778,7 @@ async function submitDateAdjRequest() {
   const btn = document.getElementById('btnSubmitAdjReq');
   btn.disabled = true; btn.textContent = 'Uploading…';
   try {
-    const newAtts = await uploadAdjAttachments(dateAdjId, adjSelectedFiles);
+    const newAtts = await processAdjFiles(adjSelectedFiles);
     const isEdit = inv.dateAdjReq && inv.dateAdjReq.status === 'pending';
     const existingAtts = isEdit ? (inv.dateAdjReq.attachments || []) : [];
     inv.dateAdjReq = {

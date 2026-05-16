@@ -282,6 +282,14 @@
   .btn-cost:hover{filter:brightness(1.2)}
   .btn-cost.no-cost{background:#c0392b}
   .btn-cost.no-cost:hover{filter:brightness(1.2)}
+  .cost-item-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  .cost-item-desc{flex:1;background:#0a1628;border:1px solid #333;color:#fff;border-radius:4px;padding:6px 8px;font-size:13px}
+  .cost-item-desc:focus,.cost-item-amt:focus{outline:none;border-color:#f39c12}
+  .cost-item-amt{width:110px;background:#0a1628;border:1px solid #333;color:#fff;border-radius:4px;padding:6px 8px;font-size:13px;text-align:right}
+  .btn-rm-cost-item{background:none;border:none;color:#c0392b;cursor:pointer;font-size:16px;padding:0 4px;line-height:1;flex-shrink:0}
+  .btn-add-cost-item{background:#1a3a6a;border:none;color:#7fb3f5;border-radius:5px;padding:7px 14px;font-size:12px;cursor:pointer;margin-bottom:12px;width:100%;text-align:left}
+  .btn-add-cost-item:hover{background:#1e4a8a}
+  .cost-total-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid #1a3a6a;margin-bottom:4px;font-size:14px;color:#e0e0e0}
   .adj-info-box{background:#0a1628;border:1px solid #0f3460;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:12px}
   .adj-info-row{display:flex;gap:12px;margin-bottom:5px;align-items:flex-start}
   .adj-info-label{color:#555;font-size:11px;min-width:90px;padding-top:1px}
@@ -560,16 +568,18 @@
 
 <!-- Cost Input Modal -->
 <div class="modal-bg" id="costModalBg">
-  <div class="modal" style="max-width:380px">
+  <div class="modal" style="max-width:480px">
     <h2>$ Input Cost</h2>
     <div class="adj-info-box" id="costModalInfo"></div>
-    <div class="form-row">
-      <label>Cost (RM)</label>
-      <input type="text" inputmode="decimal" id="fCostModal" placeholder="0.00" style="font-size:16px">
+    <div id="costItemsList"></div>
+    <button class="btn-add-cost-item" onclick="addCostItem()">+ Add Item</button>
+    <div class="cost-total-row">
+      <span>Total Cost</span>
+      <strong id="costModalTotal">RM 0.00</strong>
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeCostModal()">Cancel</button>
-      <button class="btn-confirm" onclick="saveCostModal()">Save Cost</button>
+      <button class="btn-confirm" onclick="saveCostModal()">Save</button>
     </div>
   </div>
 </div>
@@ -959,6 +969,11 @@ function persistState() {
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function amountPaid(inv) { return (inv.payments||[]).reduce((s,p) => s+(p.amount||0), 0); }
 function totalPayable(inv) { return (inv.amount||0) + (inv.sst||0); }
+function totalCost(inv) {
+  if (inv.costItems && inv.costItems.length > 0)
+    return inv.costItems.reduce((s, i) => s + (i.amount || 0), 0);
+  return inv.cost || 0;
+}
 function computeStatus(inv) {
   const paid = amountPaid(inv);
   const total = totalPayable(inv);
@@ -1183,9 +1198,10 @@ function renderList() {
         ? `${fmtDate(inv.invoiceDate)}<div style="margin-top:2px"><span class="adj-pending-badge">⏳ ADJ REQ</span></div>`
         : fmtDate(inv.invoiceDate);
     const showCost = canCost();
+    const tc = totalCost(inv);
     const actions =
       (showPay  ? `<button class="btn-rp" onclick="openPaymentModal('${inv.id}')">💰</button>` : '') +
-      (showCost ? `<button class="btn-cost${inv.cost>0?'':' no-cost'}" onclick="openCostModal('${inv.id}')" title="${inv.cost>0?'Cost: '+fmtRM(inv.cost):'No cost entered'}">${inv.cost>0?'$ '+fmtRM(inv.cost):'$ ✗'}</button>` : '') +
+      (showCost ? `<button class="btn-cost${tc>0?'':' no-cost'}" onclick="openCostModal('${inv.id}')" title="${tc>0?'Cost: '+fmtRM(tc):'No cost entered'}">${tc>0?'$ '+fmtRM(tc):'$ ✗'}</button>` : '') +
       (showEdit ? `<button class="btn-re" onclick="openInvoiceModal('${inv.id}')">✏</button>` +
                   `<button class="btn-rd" onclick="deleteInvoice('${inv.id}')">✕</button>` : '') +
       `<button class="btn-cmt" onclick="openCommentsModal('${inv.id}')">💬${cmtCount > 0 ? cmtCount : ''}</button>` +
@@ -1257,10 +1273,11 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
             ? `<button class="btn-adj-edit" title="Edit or remove date adjustment" onclick="openDateAdjReview('${inv.id}')">📅✎</button>`
             : '';
     const showCostC = canCost();
+    const tcC = totalCost(inv);
     const acts = `
       <div class="inv-card-acts">
         ${showPay ? `<button class="btn-rp" onclick="openPaymentModal('${inv.id}')">💰 Payment</button>` : ''}
-        ${showCostC ? `<button class="btn-cost${inv.cost>0?'':' no-cost'}" onclick="openCostModal('${inv.id}')">${inv.cost>0?'$ '+fmtRM(inv.cost):'$ ✗ No Cost'}</button>` : ''}
+        ${showCostC ? `<button class="btn-cost${tcC>0?'':' no-cost'}" onclick="openCostModal('${inv.id}')">${tcC>0?'$ '+fmtRM(tcC):'$ ✗ No Cost'}</button>` : ''}
         ${showEdit ? `<button class="btn-re" onclick="openInvoiceModal('${inv.id}')">✏ Edit</button>
         <button class="btn-rd" onclick="deleteInvoice('${inv.id}')">✕</button>` : ''}
         <button class="btn-cmt" onclick="openCommentsModal('${inv.id}')">💬${cmtCount > 0 ? ' ' + cmtCount : ''}</button>
@@ -1361,6 +1378,7 @@ function saveInvoice() {
       data.payments = state.invoices[idx].payments||[];
       data.createdAt = state.invoices[idx].createdAt;
       data.cost = canCost() ? parseAmountField('fCost') : (state.invoices[idx].cost||0);
+      data.costItems = state.invoices[idx].costItems || [];
       state.invoices[idx] = data;
     }
   } else {
@@ -1536,9 +1554,41 @@ function openCostModal(id) {
     `<div class="adj-info-row"><span style="color:#aaa;min-width:80px">Invoice</span><span>${esc(inv.invoiceNo)}</span></div>
      <div class="adj-info-row"><span style="color:#aaa;min-width:80px">Customer</span><span>${esc(inv.customer)}</span></div>
      <div class="adj-info-row"><span style="color:#aaa;min-width:80px">Amount</span><span>${fmtRM(totalPayable(inv))}</span></div>`;
-  document.getElementById('fCostModal').value = inv.cost > 0 ? inv.cost.toFixed(2) : '';
+  const list = document.getElementById('costItemsList');
+  list.innerHTML = '';
+  let items = inv.costItems && inv.costItems.length > 0
+    ? inv.costItems
+    : (inv.cost > 0 ? [{desc: '', amount: inv.cost}] : []);
+  items.forEach(item => _addCostItemRow(item.desc || '', item.amount || 0));
+  if (!items.length) _addCostItemRow('', 0);
+  _updateCostTotal();
   document.getElementById('costModalBg').classList.add('open');
-  setTimeout(() => document.getElementById('fCostModal').focus(), 100);
+  setTimeout(() => { const f = list.querySelector('.cost-item-desc'); if (f) f.focus(); }, 100);
+}
+function _addCostItemRow(desc, amount) {
+  const list = document.getElementById('costItemsList');
+  const row = document.createElement('div');
+  row.className = 'cost-item-row';
+  const safeDesc = String(desc).replace(/"/g, '&quot;');
+  row.innerHTML = `<input type="text" class="cost-item-desc" placeholder="Description" value="${safeDesc}">` +
+    `<input type="text" inputmode="decimal" class="cost-item-amt" placeholder="0.00" value="${amount > 0 ? Number(amount).toFixed(2) : ''}">` +
+    `<button class="btn-rm-cost-item" onclick="this.closest('.cost-item-row').remove();_updateCostTotal()" title="Remove">✕</button>`;
+  row.querySelectorAll('input').forEach(inp => inp.addEventListener('input', _updateCostTotal));
+  list.appendChild(row);
+}
+function addCostItem() {
+  _addCostItemRow('', 0);
+  const list = document.getElementById('costItemsList');
+  const descs = list.querySelectorAll('.cost-item-desc');
+  if (descs.length) descs[descs.length - 1].focus();
+}
+function _updateCostTotal() {
+  let total = 0;
+  document.querySelectorAll('#costItemsList .cost-item-amt').forEach(inp => {
+    const v = parseFloat(String(inp.value).replace(/,/g, ''));
+    if (!isNaN(v)) total += v;
+  });
+  document.getElementById('costModalTotal').textContent = fmtRM(total);
 }
 function closeCostModal() {
   document.getElementById('costModalBg').classList.remove('open');
@@ -1547,8 +1597,14 @@ function closeCostModal() {
 function saveCostModal() {
   const inv = state.invoices.find(i => i.id === costModalId);
   if (!inv) return;
-  const val = parseFloat(String(document.getElementById('fCostModal').value).replace(/,/g,''));
-  inv.cost = isNaN(val) ? 0 : val;
+  const items = [];
+  document.querySelectorAll('#costItemsList .cost-item-row').forEach(row => {
+    const desc = row.querySelector('.cost-item-desc').value.trim();
+    const amt = parseFloat(String(row.querySelector('.cost-item-amt').value).replace(/,/g, ''));
+    if (!isNaN(amt) && amt > 0) items.push({desc, amount: amt});
+  });
+  inv.costItems = items;
+  inv.cost = items.reduce((s, i) => s + i.amount, 0);
   inv.updatedAt = Date.now();
   persistState(); renderList();
   closeCostModal();
@@ -1668,16 +1724,14 @@ function renderCommissionPage() {
 
     smInvs.forEach(inv => {
       const total = (inv.amount || 0) + (inv.sst || 0);
-      const cost = inv.cost || 0;
+      const cost = totalCost(inv);
       const profit = Math.max(0, total - cost);
       const pays = inv.payments || [];
       const effDate = effectiveDate(inv);
       const adjNote = inv.adjustedDate ? `<div style="font-size:10px;margin-top:2px"><span class="adj-badge">ADJ</span><span style="color:#4fc3f7">${fmtDate(inv.adjustedDate)}</span></div>` : '';
       const invNo = `<span style="color:#4fc3f7;font-weight:700">${inv.invoiceNo||'—'}</span>${adjNote}`;
       const cust = `<span style="color:#aaa;max-width:130px;overflow:hidden;text-overflow:ellipsis;display:inline-block">${inv.customer||'—'}</span>`;
-      const costCell = isAdmin
-        ? `<input class="cost-inp" type="text" inputmode="decimal" value="${cost > 0 ? formatNumber(cost) : ''}" placeholder="0.00" onchange="saveCostInline('${inv.id}',this.value);renderCommission()">`
-        : `<span style="color:#aaa">${cost > 0 ? fmtRM(cost) : '—'}</span>`;
+      const costCell = `<span style="color:#aaa">${cost > 0 ? fmtRM(cost) : '—'}</span>`;
       const profitCell = `<span class="profit-val">${profit > 0 ? fmtRM(profit) : '—'}</span>`;
 
       if (!pays.length) {

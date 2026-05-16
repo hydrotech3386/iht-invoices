@@ -280,6 +280,8 @@
   .btn-adj-edit:hover{filter:brightness(1.2)}
   .btn-cost{background:#1a6fa8;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;padding:4px 9px;margin-left:3px;color:#fff}
   .btn-cost:hover{filter:brightness(1.2)}
+  .btn-cost.no-cost{background:#c0392b;animation:pulse .9s infinite}
+  .btn-cost.no-cost:hover{animation:none;filter:brightness(1.2)}
   .adj-info-box{background:#0a1628;border:1px solid #0f3460;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:12px}
   .adj-info-row{display:flex;gap:12px;margin-bottom:5px;align-items:flex-start}
   .adj-info-label{color:#555;font-size:11px;min-width:90px;padding-top:1px}
@@ -1183,7 +1185,7 @@ function renderList() {
     const showCost = canCost();
     const actions =
       (showPay  ? `<button class="btn-rp" onclick="openPaymentModal('${inv.id}')">💰</button>` : '') +
-      (showCost ? `<button class="btn-cost" onclick="openCostModal('${inv.id}')" title="Input cost">$</button>` : '') +
+      (showCost ? `<button class="btn-cost${inv.cost>0?'':' no-cost'}" onclick="openCostModal('${inv.id}')" title="${inv.cost>0?'Cost: '+fmtRM(inv.cost):'No cost entered'}">${inv.cost>0?'$ '+fmtRM(inv.cost):'$ ✗'}</button>` : '') +
       (showEdit ? `<button class="btn-re" onclick="openInvoiceModal('${inv.id}')">✏</button>` +
                   `<button class="btn-rd" onclick="deleteInvoice('${inv.id}')">✕</button>` : '') +
       `<button class="btn-cmt" onclick="openCommentsModal('${inv.id}')">💬${cmtCount > 0 ? cmtCount : ''}</button>` +
@@ -1258,7 +1260,7 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
     const acts = `
       <div class="inv-card-acts">
         ${showPay ? `<button class="btn-rp" onclick="openPaymentModal('${inv.id}')">💰 Payment</button>` : ''}
-        ${showCostC ? `<button class="btn-cost" onclick="openCostModal('${inv.id}')">$ Cost</button>` : ''}
+        ${showCostC ? `<button class="btn-cost${inv.cost>0?'':' no-cost'}" onclick="openCostModal('${inv.id}')">${inv.cost>0?'$ '+fmtRM(inv.cost):'$ ✗ No Cost'}</button>` : ''}
         ${showEdit ? `<button class="btn-re" onclick="openInvoiceModal('${inv.id}')">✏ Edit</button>
         <button class="btn-rd" onclick="deleteInvoice('${inv.id}')">✕</button>` : ''}
         <button class="btn-cmt" onclick="openCommentsModal('${inv.id}')">💬${cmtCount > 0 ? ' ' + cmtCount : ''}</button>

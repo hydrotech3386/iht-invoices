@@ -114,6 +114,9 @@
   .days-pill.old{background:#3d1000;color:#e74c3c}
   .td-amount{text-align:right;font-weight:700;color:#fff;min-width:110px}
   .td-bal{text-align:right;font-size:11px;color:#e94560;min-width:90px}
+  .td-cost{text-align:right;min-width:110px}
+  .cost-view-link{color:#4fc3f7;cursor:pointer;font-size:12px;font-weight:600}
+  .cost-view-link:hover{text-decoration:underline}
   .td-actions{text-align:right;white-space:nowrap}
   .td-actions button{border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600;padding:4px 9px;margin-left:3px}
   .btn-rp{background:#2980b9;color:#fff}
@@ -1163,6 +1166,7 @@ function renderList() {
   const showPay = canPay();
   const showEdit = canEdit();
   const groupByMonth = sort === 'dateDesc' || sort === 'dateAsc';
+  const hasCostCol = canCost() || (session && session.role === 'salesman');
 
   if (window.innerWidth <= 768) {
     el.innerHTML = buildCardsHTML(items, showPay, showEdit, groupByMonth);
@@ -1188,7 +1192,7 @@ function renderList() {
         lastMonth = month;
         const [y,mo] = month.split('-');
         const mLabel = new Date(y, mo-1, 1).toLocaleString('en',{month:'long',year:'numeric'});
-        rows += `<tr class="month-group-row"><td colspan="10">${mLabel}</td></tr>`;
+        rows += `<tr class="month-group-row"><td colspan="${hasCostCol ? 11 : 10}">${mLabel}</td></tr>`;
       }
     }
 
@@ -1216,10 +1220,13 @@ function renderList() {
     const showCost = canCost();
     const tc = totalCost(inv);
     const showViewCost = !showCost && session && session.role === 'salesman' && tc > 0;
+    const costCell = showCost
+      ? `<button class="btn-cost${tc>0?'':' no-cost'}" onclick="openCostModal('${inv.id}')" title="${tc>0?'Cost: '+fmtRM(tc):'No cost entered'}">${tc>0?fmtRM(tc):'✗'}</button>`
+      : showViewCost
+        ? `<span class="cost-view-link" onclick="openCostView('${inv.id}')" title="View cost breakdown">${fmtRM(tc)}</span>`
+        : `<span style="color:#333">—</span>`;
     const actions =
       (showPay  ? `<button class="btn-rp" onclick="openPaymentModal('${inv.id}')">💰</button>` : '') +
-      (showCost ? `<button class="btn-cost${tc>0?'':' no-cost'}" onclick="openCostModal('${inv.id}')" title="${tc>0?'Cost: '+fmtRM(tc):'No cost entered'}">${tc>0?'$ '+fmtRM(tc):'$ ✗'}</button>` : '') +
-      (showViewCost ? `<button class="btn-cost" onclick="openCostView('${inv.id}')" title="Cost: ${fmtRM(tc)}">$ ${fmtRM(tc)}</button>` : '') +
       (showEdit ? `<button class="btn-re" onclick="openInvoiceModal('${inv.id}')">✏</button>` +
                   `<button class="btn-rd" onclick="deleteInvoice('${inv.id}')">✕</button>` : '') +
       `<button class="btn-cmt" onclick="openCommentsModal('${inv.id}')">💬${cmtCount > 0 ? cmtCount : ''}</button>` +
@@ -1235,6 +1242,7 @@ function renderList() {
       <td class="td-days">${daysPill}</td>
       <td class="td-amount">${fmtRM(tp)}</td>
       <td class="td-bal">${balCell}</td>
+      ${hasCostCol ? `<td class="td-cost">${costCell}</td>` : ''}
       <td class="td-actions">${actions}</td>
     </tr>`;
   });
@@ -1250,6 +1258,7 @@ function renderList() {
       <th style="text-align:center">Days</th>
       <th style="text-align:right">Amount</th>
       <th style="text-align:right">Balance</th>
+      ${hasCostCol ? '<th style="text-align:right">Cost</th>' : ''}
       <th></th>
     </tr></thead>
     <tbody>${rows}</tbody>

@@ -96,6 +96,11 @@
   .inv-table th{color:#555;font-size:10px;text-transform:uppercase;letter-spacing:.5px;padding:7px 10px;border-bottom:2px solid #0f3460;white-space:nowrap;text-align:left;font-weight:600}
   .inv-table td{padding:9px 10px;border-bottom:1px solid #0a1628;vertical-align:middle;white-space:nowrap}
   .inv-table tbody tr:hover td{background:#111d3a}
+  @keyframes inv-flash{0%,30%{background:#f39c1233!important}100%{background:transparent!important}}
+  .inv-highlight{animation:inv-flash 2s ease forwards}
+  .inv-highlight td{animation:inv-flash 2s ease forwards}
+  .comm-inv-link{font-size:11px;color:#aaa;margin-bottom:3px;cursor:pointer}
+  .comm-inv-link:hover{color:#fff;text-decoration:underline}
   .inv-table tbody tr.status-paid td{opacity:.6}
   .inv-table tbody tr td:first-child{border-left:3px solid transparent}
   .inv-table tbody tr.status-unpaid td:first-child{border-left:3px solid #2980b9}
@@ -1101,6 +1106,24 @@ function setFilter(f) {
   document.querySelectorAll('.status-tab').forEach(t => t.classList.toggle('active', t.dataset.status===f));
   renderList();
 }
+function goToInvoice(id) {
+  document.getElementById('commissionBg').classList.remove('open');
+  const inv = state.invoices.find(i => i.id === id);
+  if (!inv) return;
+  const month = (inv.invoiceDate || '').slice(0, 7);
+  if (month) document.getElementById('monthFilter').value = month;
+  document.getElementById('salesmanFilter').value = '';
+  document.getElementById('searchBox').value = '';
+  setFilter('all');
+  setTimeout(() => {
+    const el = document.querySelector(`[data-inv-id="${id}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('inv-highlight');
+      setTimeout(() => el.classList.remove('inv-highlight'), 2000);
+    }
+  }, 150);
+}
 function renderSalesmanFilter() {
   const sel = document.getElementById('salesmanFilter');
   const cur = sel.value;
@@ -1235,7 +1258,7 @@ function renderList() {
       `<button class="btn-cmt" onclick="openCommentsModal('${inv.id}')">💬${cmtCount > 0 ? cmtCount : ''}</button>` +
       adjBtn;
 
-    rows += `<tr class="status-${s}">
+    rows += `<tr class="status-${s}" data-inv-id="${inv.id}">
       <td class="td-date">${dateDisplay}</td>
       <td class="td-invno">${inv.invoiceNo||'—'}</td>
       <td class="td-customer" title="${inv.customer||''}">${inv.customer||'—'}</td>
@@ -1316,7 +1339,7 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
         ${adjBtnC}
       </div>`;
 
-    html += `<div class="inv-card status-${s}">
+    html += `<div class="inv-card status-${s}" data-inv-id="${inv.id}">
       <div class="inv-card-hd">
         <span class="inv-card-no">${inv.invoiceNo||'—'}</span>
         <span class="status-badge ${s}">${statusLabel(s)}</span>
@@ -1715,7 +1738,7 @@ function renderCommission() {
     gAmt+=d.amt; gSst+=d.sst; gCount+=d.invs.length;
     const invList = d.invs.map(inv => {
       const s=computeStatus(inv);
-      return `<div style="font-size:11px;color:#aaa;margin-bottom:3px">${inv.invoiceNo||'—'} — ${inv.customer||'—'} <span class="status-badge ${s}" style="font-size:9px;padding:1px 5px">${statusLabel(s)}</span> <span style="color:#fff;margin-left:4px;white-space:nowrap">${fmtRM(totalPayable(inv))}</span></div>`;
+      return `<div class="comm-inv-link" onclick="goToInvoice('${inv.id}')">${inv.invoiceNo||'—'} — ${inv.customer||'—'} <span class="status-badge ${s}" style="font-size:9px;padding:1px 5px">${statusLabel(s)}</span> <span style="color:#fff;margin-left:4px;white-space:nowrap">${fmtRM(totalPayable(inv))}</span></div>`;
     }).join('');
     return `<tr>
       <td class="comm-sm">${sm}<div style="font-weight:400;margin-top:6px">${invList}</div></td>
@@ -1791,7 +1814,7 @@ function renderCommissionPage() {
       const pays = inv.payments || [];
       const effDate = effectiveDate(inv);
       const adjNote = inv.adjustedDate ? `<div style="font-size:10px;margin-top:2px"><span class="adj-badge">ADJ</span><span style="color:#4fc3f7">${fmtDate(inv.adjustedDate)}</span></div>` : '';
-      const invNo = `<span style="color:#4fc3f7;font-weight:700">${inv.invoiceNo||'—'}</span>${adjNote}`;
+      const invNo = `<span style="color:#4fc3f7;font-weight:700;cursor:pointer;text-decoration:underline" onclick="goToInvoice('${inv.id}')" title="Go to invoice">${inv.invoiceNo||'—'}</span>${adjNote}`;
       const cust = `<span style="color:#aaa;max-width:130px;overflow:hidden;text-overflow:ellipsis;display:inline-block">${inv.customer||'—'}</span>`;
       const costCell = `<span style="color:#aaa">${cost > 0 ? fmtRM(cost) : '—'}</span>`;
       const profitCell = `<span class="profit-val">${profit > 0 ? fmtRM(profit) : '—'}</span>`;

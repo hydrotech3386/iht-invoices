@@ -753,7 +753,7 @@ let salesmanChatIds = {};         // { salesmanName: chatId }
 function canWrite() { return session && (session.role==='management' || session.role==='admin' || session.role==='account'); }
 function canEdit()  { return session && session.role==='account'; }
 function canPay()   { return session && (session.role==='admin' || session.role==='account'); }
-function canCost()  { return session && session.role==='admin'; }
+function canCost()  { return session && (session.role==='admin' || session.role==='management'); }
 
 // ---- Telegram ----
 function rebuildChatIds(users) {

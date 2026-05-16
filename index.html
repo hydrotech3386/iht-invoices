@@ -613,6 +613,9 @@
     </div>
     <div class="month-sel-row">
       <select id="commissionMonth" onchange="renderCommission()"></select>
+      <select id="commissionSalesmanFilter" onchange="renderCommission()">
+        <option value="">All Agents</option>
+      </select>
       <select id="commissionStatusFilter" onchange="renderCommission()">
         <option value="all">All invoices</option>
         <option value="paid">Paid only</option>
@@ -1670,6 +1673,10 @@ function openCommission() {
       sel.innerHTML+=`<option value="${m}">${new Date(y,mo-1,1).toLocaleString('en-GB',{month:'long',year:'numeric'})}</option>`;
     });
   }
+  const smSel = document.getElementById('commissionSalesmanFilter');
+  const curSm = smSel.value;
+  smSel.innerHTML = '<option value="">All Agents</option>' +
+    state.salesmen.map(s => `<option value="${s}"${s===curSm?' selected':''}>${s}</option>`).join('');
   document.getElementById('commTabSummary').classList.toggle('active', commTab==='summary');
   document.getElementById('commTabCommission').classList.toggle('active', commTab==='commission');
   document.getElementById('commissionBg').classList.add('open');
@@ -1681,6 +1688,7 @@ function renderCommission() {
 
   const month = document.getElementById('commissionMonth').value;
   const stF = document.getElementById('commissionStatusFilter').value;
+  const smF = document.getElementById('commissionSalesmanFilter').value;
   const content = document.getElementById('commissionContent');
   if (!month) { content.innerHTML='<div class="report-empty">No data.</div>'; return; }
 
@@ -1688,6 +1696,7 @@ function renderCommission() {
   state.invoices.filter(inv => {
     if (!(inv.invoiceDate||'').startsWith(month)) return false;
     if (stF==='paid' && computeStatus(inv)!=='paid') return false;
+    if (smF && inv.salesman !== smF) return false;
     return true;
   }).forEach(inv => {
     const key = inv.salesman||'(No agent)';
@@ -1751,7 +1760,12 @@ function renderCommissionPage() {
   const content = document.getElementById('commissionContent');
   if (!month) { content.innerHTML='<div class="report-empty">No data.</div>'; return; }
 
-  const invs = state.invoices.filter(inv => (inv.invoiceDate||'').startsWith(month));
+  const smF = document.getElementById('commissionSalesmanFilter').value;
+  const invs = state.invoices.filter(inv => {
+    if (!(inv.invoiceDate||'').startsWith(month)) return false;
+    if (smF && inv.salesman !== smF) return false;
+    return true;
+  });
   if (!invs.length) { content.innerHTML='<div class="report-empty">No invoices for this period.</div>'; return; }
 
   const bySm = {};

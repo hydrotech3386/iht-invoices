@@ -28,7 +28,8 @@
   .search-box::placeholder{color:#555}
   .user-info{display:flex;align-items:center;gap:8px;margin-left:auto}
   .role-badge{font-size:10px;font-weight:700;border-radius:4px;padding:2px 8px;letter-spacing:.5px;white-space:nowrap}
-  .role-badge.admin{background:#8e44ad;color:#fff}
+  .role-badge.management{background:#7d3c98;color:#fff}
+  .role-badge.admin{background:#c0392b;color:#fff}
   .role-badge.account{background:#16a085;color:#fff}
   .role-badge.salesman{background:#2980b9;color:#fff}
   .user-name{font-size:12px;color:#aaa;white-space:nowrap}
@@ -70,7 +71,7 @@
   .btn-adj-notify{background:#e67e22;color:#fff;animation:pulse .9s infinite}
   .btn-adj-notify:hover,.btn-adj-notify.active{animation:none;filter:brightness(1.15)}
   .btn-adj-notify.active{background:#c0392b}
-  body:not([data-role="admin"]) .btn-adj-notify{display:none!important}
+  body:not([data-role="management"]) .btn-adj-notify{display:none!important}
   .btn-my-adj-req{background:#1a6fa8;color:#fff}
   .btn-my-adj-req:hover{filter:brightness(1.2)}
   .my-adj-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
@@ -163,15 +164,15 @@
   .shake{animation:shake .35s ease}
 
   /* Role-based visibility */
-  body[data-role="salesman"] .btn-add { display:none }
-  body:not([data-role="admin"]) .btn-backup,
-  body:not([data-role="admin"]) .btn-usermgmt { display:none }
-  body[data-role="salesman"] .btn-commission { display:none }
+  body:not([data-role="account"]) .btn-add { display:none }
+  body:not([data-role="management"]) .btn-backup,
+  body:not([data-role="management"]) .btn-usermgmt { display:none }
+  body:not([data-role="management"]) .btn-commission { display:none }
   body[data-role="salesman"] #salesmanFilter { display:none }
   body:not([data-role="salesman"]) .btn-my-adj-req { display:none }
   .btn-all-adj-req{background:#6c3483;color:#fff}
   .btn-all-adj-req:hover{filter:brightness(1.15)}
-  body:not([data-role="admin"]) .btn-all-adj-req{display:none}
+  body:not([data-role="management"]) .btn-all-adj-req{display:none}
 
   /* User management */
   .user-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
@@ -277,6 +278,8 @@
   .btn-adj-review:hover{filter:brightness(1.2);animation:none}
   .btn-adj-edit{background:#1a6fa8;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;padding:4px 9px;margin-left:3px;color:#fff}
   .btn-adj-edit:hover{filter:brightness(1.2)}
+  .btn-cost{background:#1a6fa8;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;padding:4px 9px;margin-left:3px;color:#fff}
+  .btn-cost:hover{filter:brightness(1.2)}
   .adj-info-box{background:#0a1628;border:1px solid #0f3460;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:12px}
   .adj-info-row{display:flex;gap:12px;margin-bottom:5px;align-items:flex-start}
   .adj-info-label{color:#555;font-size:11px;min-width:90px;padding-top:1px}
@@ -311,7 +314,7 @@
   .inv-card-acts{display:flex;gap:6px;margin-top:6px}
   .inv-card-acts .btn-rp{flex:2;padding:9px 8px;font-size:13px}
   .inv-card-acts .btn-re,.inv-card-acts .btn-rd{flex:1;padding:9px 8px;font-size:13px}
-  .inv-card-acts .btn-cmt,.inv-card-acts .btn-adj-req,.inv-card-acts .btn-adj-review,.inv-card-acts .btn-adj-edit{flex:1;padding:9px 8px;font-size:13px;margin-left:0}
+  .inv-card-acts .btn-cmt,.inv-card-acts .btn-cost,.inv-card-acts .btn-adj-req,.inv-card-acts .btn-adj-review,.inv-card-acts .btn-adj-edit{flex:1;padding:9px 8px;font-size:13px;margin-left:0}
 
   /* Mobile */
   @media(max-width:768px){
@@ -553,6 +556,22 @@
   </div>
 </div>
 
+<!-- Cost Input Modal -->
+<div class="modal-bg" id="costModalBg">
+  <div class="modal" style="max-width:380px">
+    <h2>$ Input Cost</h2>
+    <div class="adj-info-box" id="costModalInfo"></div>
+    <div class="form-row">
+      <label>Cost (RM)</label>
+      <input type="text" inputmode="decimal" id="fCostModal" placeholder="0.00" style="font-size:16px">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeCostModal()">Cancel</button>
+      <button class="btn-confirm" onclick="saveCostModal()">Save Cost</button>
+    </div>
+  </div>
+</div>
+
 <!-- Commission Report Modal -->
 <div class="modal-bg" id="commissionBg">
   <div class="modal" style="max-width:900px">
@@ -700,9 +719,10 @@ let adjPendingFilter = false;
 let appSettings  = {};            // { telegramBotToken }
 let salesmanChatIds = {};         // { salesmanName: chatId }
 
-function canWrite() { return session && (session.role==='admin' || session.role==='account'); }
-function canEdit()  { return session && (session.role==='admin' || session.role==='account'); }
+function canWrite() { return session && (session.role==='management' || session.role==='admin' || session.role==='account'); }
+function canEdit()  { return session && session.role==='account'; }
 function canPay()   { return session && (session.role==='admin' || session.role==='account'); }
+function canCost()  { return session && session.role==='admin'; }
 
 // ---- Telegram ----
 function rebuildChatIds(users) {
@@ -1144,8 +1164,8 @@ function renderList() {
     const isOwnInv = session && session.role==='salesman' && session.salesman===inv.salesman;
     const canReqAdj = isOwnInv && (!adjReq || adjReq.status==='rejected');
     const canEditAdj = isOwnInv && adjReq && adjReq.status==='pending';
-    const hasPendingAdj = session && session.role==='admin' && adjReq && adjReq.status==='pending';
-    const hasApprovedAdj = session && session.role==='admin' && inv.adjustedDate;
+    const hasPendingAdj = session && session.role==='management' && adjReq && adjReq.status==='pending';
+    const hasApprovedAdj = session && session.role==='management' && inv.adjustedDate;
     const adjBtn = canReqAdj
       ? `<button class="btn-adj-req" title="Request date adjustment" onclick="openDateAdjRequest('${inv.id}')">📅</button>`
       : canEditAdj
@@ -1160,8 +1180,10 @@ function renderList() {
       : adjReq && adjReq.status==='pending'
         ? `${fmtDate(inv.invoiceDate)}<div style="margin-top:2px"><span class="adj-pending-badge">⏳ ADJ REQ</span></div>`
         : fmtDate(inv.invoiceDate);
+    const showCost = canCost();
     const actions =
       (showPay  ? `<button class="btn-rp" onclick="openPaymentModal('${inv.id}')">💰</button>` : '') +
+      (showCost ? `<button class="btn-cost" onclick="openCostModal('${inv.id}')" title="Input cost">$</button>` : '') +
       (showEdit ? `<button class="btn-re" onclick="openInvoiceModal('${inv.id}')">✏</button>` +
                   `<button class="btn-rd" onclick="deleteInvoice('${inv.id}')">✕</button>` : '') +
       `<button class="btn-cmt" onclick="openCommentsModal('${inv.id}')">💬${cmtCount > 0 ? cmtCount : ''}</button>` +
@@ -1227,14 +1249,16 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
       ? `<button class="btn-adj-req" onclick="openDateAdjRequest('${inv.id}')">📅</button>`
       : (isOwnInvC && adjReqC && adjReqC.status==='pending')
         ? `<button class="btn-adj-req" onclick="openDateAdjRequest('${inv.id}')">📅✎</button>`
-        : (session && session.role==='admin' && adjReqC && adjReqC.status==='pending')
+        : (session && session.role==='management' && adjReqC && adjReqC.status==='pending')
           ? `<button class="btn-adj-review" onclick="openDateAdjReview('${inv.id}')">📅⚠</button>`
-          : (session && session.role==='admin' && inv.adjustedDate)
+          : (session && session.role==='management' && inv.adjustedDate)
             ? `<button class="btn-adj-edit" title="Edit or remove date adjustment" onclick="openDateAdjReview('${inv.id}')">📅✎</button>`
             : '';
+    const showCostC = canCost();
     const acts = `
       <div class="inv-card-acts">
         ${showPay ? `<button class="btn-rp" onclick="openPaymentModal('${inv.id}')">💰 Payment</button>` : ''}
+        ${showCostC ? `<button class="btn-cost" onclick="openCostModal('${inv.id}')">$ Cost</button>` : ''}
         ${showEdit ? `<button class="btn-re" onclick="openInvoiceModal('${inv.id}')">✏ Edit</button>
         <button class="btn-rd" onclick="deleteInvoice('${inv.id}')">✕</button>` : ''}
         <button class="btn-cmt" onclick="openCommentsModal('${inv.id}')">💬${cmtCount > 0 ? ' ' + cmtCount : ''}</button>
@@ -1269,7 +1293,7 @@ function openInvoiceModal(id) {
   const dl = document.getElementById('customerSuggestions');
   const names = [...new Set(state.invoices.map(i => i.customer).filter(Boolean))].sort((a,b) => a.localeCompare(b));
   dl.innerHTML = names.map(n => `<option value="${n}">`).join('');
-  const isAdmin = session && session.role === 'admin';
+  const isAdmin = canCost();
   document.getElementById('costRow').style.display = isAdmin ? '' : 'none';
   document.getElementById('costDivider').style.display = isAdmin ? '' : 'none';
   if (id) {
@@ -1334,14 +1358,14 @@ function saveInvoice() {
       data.id = editingId;
       data.payments = state.invoices[idx].payments||[];
       data.createdAt = state.invoices[idx].createdAt;
-      data.cost = (session && session.role==='admin') ? parseAmountField('fCost') : (state.invoices[idx].cost||0);
+      data.cost = canCost() ? parseAmountField('fCost') : (state.invoices[idx].cost||0);
       state.invoices[idx] = data;
     }
   } else {
     data.id = uid();
     data.payments = [];
     data.createdAt = Date.now();
-    if (session && session.role==='admin') data.cost = parseAmountField('fCost');
+    if (canCost()) data.cost = parseAmountField('fCost');
     state.invoices.push(data);
   }
   closeInvoiceModal();
@@ -1500,6 +1524,34 @@ function switchCommTab(tab) {
   renderCommission();
 }
 
+let costModalId = null;
+function openCostModal(id) {
+  const inv = state.invoices.find(i => i.id === id);
+  if (!inv) return;
+  costModalId = id;
+  const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  document.getElementById('costModalInfo').innerHTML =
+    `<div class="adj-info-row"><span style="color:#aaa;min-width:80px">Invoice</span><span>${esc(inv.invoiceNo)}</span></div>
+     <div class="adj-info-row"><span style="color:#aaa;min-width:80px">Customer</span><span>${esc(inv.customer)}</span></div>
+     <div class="adj-info-row"><span style="color:#aaa;min-width:80px">Amount</span><span>${fmtRM(totalPayable(inv))}</span></div>`;
+  document.getElementById('fCostModal').value = inv.cost > 0 ? inv.cost.toFixed(2) : '';
+  document.getElementById('costModalBg').classList.add('open');
+  setTimeout(() => document.getElementById('fCostModal').focus(), 100);
+}
+function closeCostModal() {
+  document.getElementById('costModalBg').classList.remove('open');
+  costModalId = null;
+}
+function saveCostModal() {
+  const inv = state.invoices.find(i => i.id === costModalId);
+  if (!inv) return;
+  const val = parseFloat(String(document.getElementById('fCostModal').value).replace(/,/g,''));
+  inv.cost = isNaN(val) ? 0 : val;
+  inv.updatedAt = Date.now();
+  persistState(); renderList();
+  closeCostModal();
+}
+
 function openCommission() {
   const sel = document.getElementById('commissionMonth');
   sel.innerHTML='';
@@ -1603,7 +1655,7 @@ function renderCommissionPage() {
     bySm[key].push(inv);
   });
 
-  const isAdmin = session && session.role === 'admin';
+  const isAdmin = session && (session.role === 'admin' || session.role === 'management');
   let grandTotal = 0;
   let html = '';
 
@@ -1827,7 +1879,7 @@ function openAllAdjRequests() {
 }
 
 function updateAdjNotifyBadge() {
-  if (!session || session.role !== 'admin') return;
+  if (!session || session.role !== 'management') return;
   const count = state.invoices.filter(inv => inv.dateAdjReq && inv.dateAdjReq.status === 'pending').length;
   const btn = document.getElementById('adjNotifyBtn');
   if (!btn) return;
@@ -2124,7 +2176,8 @@ function renderUserMgmt() {
   if (!entries.length) { content.innerHTML = '<div style="color:#555;text-align:center;padding:24px">No users yet.</div>'; return; }
 
   const smOpts = ['', ...state.salesmen].map(s => `<option value="${s}">${s||'—'}</option>`).join('');
-  const roleOpts = r => ['admin','account','salesman'].map(x => `<option value="${x}"${x===r?' selected':''}>${x}</option>`).join('');
+  const roleLabels = {management:'Management',admin:'Admin',account:'Account',salesman:'Salesman'};
+  const roleOpts = r => ['management','admin','account','salesman'].map(x => `<option value="${x}"${x===r?' selected':''}>${roleLabels[x]}</option>`).join('');
 
   const rows = entries.map(([fuid, u]) => {
     const isPending = u.role === 'pending';
@@ -2152,7 +2205,7 @@ function renderUserMgmt() {
     </tr>`;
   }).join('');
 
-  const botSection = session.role === 'admin' ? `
+  const botSection = (session.role === 'admin' || session.role === 'management') ? `
     <div style="margin-bottom:16px;padding:12px;background:#0f3460;border-radius:8px;border:1px solid #1a3a5c">
       <div style="font-size:11px;color:#aaa;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🤖 Telegram Bot Token</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">

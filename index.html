@@ -1118,13 +1118,13 @@ function goToInvoice(id) {
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     const targets = el.tagName === 'TR' ? [...el.querySelectorAll('td')] : [el];
     targets.forEach(t => { t.style.backgroundColor = '#f39c1244'; });
-    requestAnimationFrame(() => requestAnimationFrame(() => {
+    setTimeout(() => {
       targets.forEach(t => {
-        t.style.transition = 'background-color 1.5s ease';
+        t.style.transition = 'background-color 2.5s ease';
         t.style.backgroundColor = '';
       });
-      setTimeout(() => targets.forEach(t => { t.style.transition = ''; }), 1600);
-    }));
+      setTimeout(() => targets.forEach(t => { t.style.transition = ''; }), 2600);
+    }, 1200);
   }, 150);
 }
 function renderSalesmanFilter() {

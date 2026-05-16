@@ -584,6 +584,22 @@
   </div>
 </div>
 
+<!-- Cost View Modal (salesman read-only) -->
+<div class="modal-bg" id="costViewBg">
+  <div class="modal" style="max-width:420px">
+    <h2>$ Cost Breakdown</h2>
+    <div class="adj-info-box" id="costViewInfo"></div>
+    <div id="costViewItems"></div>
+    <div class="cost-total-row">
+      <span>Total Cost</span>
+      <strong id="costViewTotal">RM 0.00</strong>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="document.getElementById('costViewBg').classList.remove('open')">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- Commission Report Modal -->
 <div class="modal-bg" id="commissionBg">
   <div class="modal" style="max-width:900px">
@@ -1199,9 +1215,11 @@ function renderList() {
         : fmtDate(inv.invoiceDate);
     const showCost = canCost();
     const tc = totalCost(inv);
+    const showViewCost = !showCost && session && session.role === 'salesman' && tc > 0;
     const actions =
       (showPay  ? `<button class="btn-rp" onclick="openPaymentModal('${inv.id}')">💰</button>` : '') +
       (showCost ? `<button class="btn-cost${tc>0?'':' no-cost'}" onclick="openCostModal('${inv.id}')" title="${tc>0?'Cost: '+fmtRM(tc):'No cost entered'}">${tc>0?'$ '+fmtRM(tc):'$ ✗'}</button>` : '') +
+      (showViewCost ? `<button class="btn-cost" onclick="openCostView('${inv.id}')" title="Cost: ${fmtRM(tc)}">$ ${fmtRM(tc)}</button>` : '') +
       (showEdit ? `<button class="btn-re" onclick="openInvoiceModal('${inv.id}')">✏</button>` +
                   `<button class="btn-rd" onclick="deleteInvoice('${inv.id}')">✕</button>` : '') +
       `<button class="btn-cmt" onclick="openCommentsModal('${inv.id}')">💬${cmtCount > 0 ? cmtCount : ''}</button>` +
@@ -1274,10 +1292,12 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
             : '';
     const showCostC = canCost();
     const tcC = totalCost(inv);
+    const showViewCostC = !showCostC && session && session.role === 'salesman' && tcC > 0;
     const acts = `
       <div class="inv-card-acts">
         ${showPay ? `<button class="btn-rp" onclick="openPaymentModal('${inv.id}')">💰 Payment</button>` : ''}
         ${showCostC ? `<button class="btn-cost${tcC>0?'':' no-cost'}" onclick="openCostModal('${inv.id}')">${tcC>0?'$ '+fmtRM(tcC):'$ ✗ No Cost'}</button>` : ''}
+        ${showViewCostC ? `<button class="btn-cost" onclick="openCostView('${inv.id}')">$ ${fmtRM(tcC)}</button>` : ''}
         ${showEdit ? `<button class="btn-re" onclick="openInvoiceModal('${inv.id}')">✏ Edit</button>
         <button class="btn-rd" onclick="deleteInvoice('${inv.id}')">✕</button>` : ''}
         <button class="btn-cmt" onclick="openCommentsModal('${inv.id}')">💬${cmtCount > 0 ? ' ' + cmtCount : ''}</button>
@@ -1593,6 +1613,25 @@ function _updateCostTotal() {
 function closeCostModal() {
   document.getElementById('costModalBg').classList.remove('open');
   costModalId = null;
+}
+function openCostView(id) {
+  const inv = state.invoices.find(i => i.id === id);
+  if (!inv) return;
+  const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  document.getElementById('costViewInfo').innerHTML =
+    `<div class="adj-info-row"><span style="color:#aaa;min-width:80px">Invoice</span><span>${esc(inv.invoiceNo)}</span></div>
+     <div class="adj-info-row"><span style="color:#aaa;min-width:80px">Customer</span><span>${esc(inv.customer)}</span></div>`;
+  const items = inv.costItems && inv.costItems.length > 0
+    ? inv.costItems
+    : (inv.cost > 0 ? [{desc: '', amount: inv.cost}] : []);
+  document.getElementById('costViewItems').innerHTML = items.length
+    ? items.map(item => `<div class="cost-item-row" style="pointer-events:none">
+        <span style="flex:1;font-size:13px;color:#e0e0e0;padding:4px 0">${esc(item.desc) || '<span style="color:#555">—</span>'}</span>
+        <span style="width:110px;text-align:right;font-size:13px;color:#e0e0e0;padding:4px 0;flex-shrink:0">${fmtRM(item.amount)}</span>
+      </div>`).join('')
+    : '<div style="color:#aaa;font-size:13px;padding:8px 0">No cost details</div>';
+  document.getElementById('costViewTotal').textContent = fmtRM(totalCost(inv));
+  document.getElementById('costViewBg').classList.add('open');
 }
 function saveCostModal() {
   const inv = state.invoices.find(i => i.id === costModalId);

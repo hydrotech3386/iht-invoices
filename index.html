@@ -1241,8 +1241,8 @@ function renderList() {
       <td class="td-term" style="color:#666;font-size:11px">${inv.term||'—'}</td>
       <td class="td-days">${daysPill}</td>
       <td class="td-amount">${fmtRM(tp)}</td>
-      <td class="td-bal">${balCell}</td>
       ${hasCostCol ? `<td class="td-cost">${costCell}</td>` : ''}
+      <td class="td-bal">${balCell}</td>
       <td class="td-actions">${actions}</td>
     </tr>`;
   });
@@ -1257,8 +1257,8 @@ function renderList() {
       <th>Term</th>
       <th style="text-align:center">Days</th>
       <th style="text-align:right">Amount</th>
-      <th style="text-align:right">Balance</th>
       ${hasCostCol ? '<th style="text-align:right">Cost</th>' : ''}
+      <th style="text-align:right">Balance</th>
       <th></th>
     </tr></thead>
     <tbody>${rows}</tbody>

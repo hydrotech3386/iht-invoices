@@ -117,8 +117,8 @@
   .td-amount{text-align:right;font-weight:700;color:#fff;min-width:110px}
   .td-bal{text-align:right;font-size:11px;color:#e94560;min-width:90px}
   .td-cost{text-align:right;min-width:110px}
-  #backToTop{position:fixed;bottom:24px;right:20px;background:#0f3460;color:#fff;border:none;border-radius:50%;width:44px;height:44px;font-size:22px;line-height:44px;text-align:center;cursor:pointer;z-index:950;box-shadow:0 3px 12px rgba(0,0,0,.6)}
-  #backToTop:hover{background:#1a4a8a}
+  #backToTop{position:fixed;bottom:80px;right:20px;background:#e94560;color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:24px;line-height:48px;text-align:center;cursor:pointer;z-index:1500;box-shadow:0 4px 16px rgba(0,0,0,.8);display:none}
+  #backToTop:hover{background:#c0392b}
   .cost-view-link{color:#4fc3f7;cursor:pointer;font-size:12px;font-weight:600}
   .cost-view-link:hover{text-decoration:underline}
   .td-actions{text-align:right;white-space:nowrap}
@@ -828,6 +828,7 @@ async function loginAsync() {
   const errEl    = document.getElementById('loginError');
   errEl.textContent = '';
   if (!email || !password) { errEl.textContent = 'Enter email and password.'; return; }
+  if (!usersRef) { errEl.textContent = 'Not connected. Please refresh the page.'; return; }
   try {
     const hash = await sha256(password);
     const snap = await usersRef.once('value');
@@ -912,6 +913,7 @@ function applyRoleToUI() {
 function onLoggedIn() {
   applyRoleToUI();
   renderSalesmanFilter(); renderMonthFilter(); renderSummary(); renderList();
+  setupBackToTop();
   if (!fbReady) return;
   // Load Telegram settings and chat ID map
   firebase.database().ref('appSettings').once('value').then(snap => {
@@ -2617,14 +2619,21 @@ function scrollToTop() {
   else window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-init();
+function setupBackToTop() {
+  const btn = document.getElementById('backToTop');
+  if (!btn) return;
+  const wrap = document.getElementById('invoiceList');
+  function check() {
+    const scrolled = (wrap && wrap.scrollTop > 150) || window.scrollY > 150;
+    btn.style.display = scrolled ? 'block' : 'none';
+  }
+  if (wrap) wrap.addEventListener('scroll', check);
+  window.addEventListener('scroll', check);
+  check();
+}
 
-const _btn = document.createElement('button');
-_btn.id = 'backToTop';
-_btn.title = 'Back to top';
-_btn.textContent = '↑';
-_btn.onclick = scrollToTop;
-document.body.appendChild(_btn);
+init();
 </script>
+<button id="backToTop" title="Back to top" onclick="scrollToTop()">↑</button>
 </body>
 </html>

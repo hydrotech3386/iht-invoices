@@ -67,8 +67,8 @@ function daysSince(dateStr) {
 // ---- Main ----
 async function main() {
   if (!BOT_TOKEN || !DB_URL || !DB_SECRET) {
-    console.error('Missing environment variables: TELEGRAM_BOT_TOKEN, FIREBASE_DB_URL, FIREBASE_DB_SECRET');
-    process.exit(1);
+    console.log('Telegram notification secrets not configured — skipping.');
+    process.exit(0);
   }
 
   // Fetch all data in parallel

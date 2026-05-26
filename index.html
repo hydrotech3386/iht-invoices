@@ -830,6 +830,9 @@ async function loginAsync() {
   if (!email || !password) { errEl.textContent = 'Enter email and password.'; return; }
   if (!usersRef) { errEl.textContent = 'Not connected. Please refresh the page.'; return; }
   try {
+    if (fbReady && !firebase.auth().currentUser) {
+      await firebase.auth().signInAnonymously().catch(() => {});
+    }
     const hash = await sha256(password);
     const snap = await usersRef.once('value');
     const users = snap.val() || {};

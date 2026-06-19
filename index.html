@@ -333,6 +333,29 @@
   .inv-card-acts .btn-re,.inv-card-acts .btn-rd{flex:1;padding:9px 8px;font-size:13px}
   .inv-card-acts .btn-cmt,.inv-card-acts .btn-cost,.inv-card-acts .btn-adj-req,.inv-card-acts .btn-adj-review,.inv-card-acts .btn-adj-edit{flex:1;padding:9px 8px;font-size:13px;margin-left:0}
 
+  /* Invoice Scanner */
+  .btn-scan{background:#8e44ad;color:#fff;border:none;border-radius:6px;padding:10px 14px;font-size:13px;font-weight:600;cursor:pointer;width:100%;margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:7px;transition:background .15s}
+  .btn-scan:hover{background:#7d3c98}
+  .scan-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center;visibility:hidden;opacity:0;transition:opacity .2s;pointer-events:none}
+  .scan-overlay.open{visibility:visible;opacity:1;pointer-events:auto}
+  .scan-spinner{width:48px;height:48px;border:4px solid #333;border-top-color:#8e44ad;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:16px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .scan-preview{width:130px;height:130px;object-fit:cover;border-radius:8px;margin-bottom:14px;border:2px solid #8e44ad;display:none}
+  .scan-status{color:#e0e0e0;font-size:14px;text-align:center}
+  .apikey-modal{background:#16213e;border:1px solid #0f3460;border-radius:12px;padding:24px 22px;width:100%;max-width:400px}
+  .apikey-modal h3{color:#e94560;font-size:15px;margin-bottom:6px}
+  .apikey-modal .ak-sub{color:#aaa;font-size:12px;margin-bottom:14px}
+  .apikey-steps{margin:10px 0 14px;font-size:12px;color:#aaa;line-height:2}
+  .apikey-steps li{margin-left:14px}
+  .apikey-steps a{color:#4fc3f7;text-decoration:none}
+  .apikey-steps a:hover{text-decoration:underline}
+  .apikey-inp{width:100%;background:#0f3460;border:1px solid #333;color:#fff;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:12px;display:block}
+  .apikey-inp:focus{outline:none;border-color:#8e44ad}
+  .ak-note{font-size:11px;color:#555;margin-bottom:12px}
+  .ak-row{display:flex;gap:8px;justify-content:flex-end}
+  .btn-ak-save{background:#8e44ad;color:#fff;border:none;border-radius:6px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer}
+  .btn-ak-save:hover{background:#7d3c98}
+
   /* Mobile */
   @media(max-width:768px){
     input,textarea,select{font-size:16px!important}
@@ -468,6 +491,8 @@
 <div class="modal-bg" id="invoiceModalBg">
   <div class="modal">
     <h2 id="invoiceModalTitle">Add Invoice</h2>
+
+    <button class="btn-scan" id="scanInvoiceBtn" onclick="openScanInvoice()">📷 Scan Invoice — Auto Fill</button>
 
     <div class="section-divider">Invoice Info</div>
     <div class="form-2col">
@@ -2611,6 +2636,7 @@ document.addEventListener('keydown', e => {
     document.getElementById('allAdjRequestsBg').classList.remove('open');
     document.getElementById('commissionBg').classList.remove('open');
     document.getElementById('userMgmtBg').classList.remove('open');
+    document.getElementById('apiKeyModalBg').classList.remove('open');
   }
 });
 let _rszT;
@@ -2635,8 +2661,123 @@ function setupBackToTop() {
   check();
 }
 
+// ── Invoice Scanner ──────────────────────────────────────────
+const GEMINI_KEY_STORE = 'iht_gemini_key';
+function getGeminiKey() { return localStorage.getItem(GEMINI_KEY_STORE) || ''; }
+
+function openScanInvoice() {
+  if (!getGeminiKey()) { document.getElementById('apiKeyModalBg').classList.add('open'); setTimeout(() => document.getElementById('apiKeyInput').focus(), 300); return; }
+  document.getElementById('scanFileInput').click();
+}
+
+function saveApiKeyAndScan() {
+  const key = document.getElementById('apiKeyInput').value.trim();
+  if (!key) { alert('Please paste your API key first.'); return; }
+  localStorage.setItem(GEMINI_KEY_STORE, key);
+  document.getElementById('apiKeyModalBg').classList.remove('open');
+  setTimeout(() => document.getElementById('scanFileInput').click(), 150);
+}
+
+function fileToBase64(file) {
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = rej; r.readAsDataURL(file); });
+}
+
+async function processScanFile(file) {
+  if (!file) return;
+  const key = getGeminiKey();
+  if (!key) return;
+  const objUrl = URL.createObjectURL(file);
+  const prev = document.getElementById('scanPreview');
+  prev.src = objUrl; prev.style.display = 'block';
+  document.getElementById('scanStatusMsg').textContent = 'Reading invoice...';
+  document.getElementById('scanOverlay').classList.add('open');
+  try {
+    const base64 = await fileToBase64(file);
+    const prompt = `You are reading a Malaysian business invoice or tax invoice image.
+Extract these fields and return ONLY a valid JSON object, no explanation or markdown:
+{"invoiceNo":"invoice number","invoiceDate":"YYYY-MM-DD","customerName":"company or person billed","amount":total_as_number,"poNumber":"customer PO ref or null","term":"payment term like C.O.D or 30 days or null","notes":"brief goods/services description or null"}
+Use null for any field not found. For amount, return only the final grand total as a plain number.`;
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: file.type || 'image/jpeg', data: base64 } }] }], generationConfig: { temperature: 0.1 } })
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      if (res.status === 400 || res.status === 403) {
+        localStorage.removeItem(GEMINI_KEY_STORE);
+        document.getElementById('scanOverlay').classList.remove('open');
+        alert('API key invalid or expired.\n\nPlease enter your key again.');
+        document.getElementById('apiKeyInput').value = '';
+        document.getElementById('apiKeyModalBg').classList.add('open');
+        return;
+      }
+      throw new Error((e.error?.message) || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('AI returned an unexpected response. Try a clearer photo.');
+    const inv = JSON.parse(match[0]);
+    if (inv.invoiceNo)    document.getElementById('fInvNo').value = inv.invoiceNo;
+    if (inv.invoiceDate)  document.getElementById('fInvDate').value = inv.invoiceDate;
+    if (inv.customerName) document.getElementById('fCustomer').value = inv.customerName;
+    if (inv.amount) {
+      const f = document.getElementById('fAmount'); f.value = formatNumber(inv.amount); formatAmountInput(f);
+    }
+    if (inv.poNumber)     document.getElementById('fPO').value = inv.poNumber;
+    if (inv.term) {
+      const sel = document.getElementById('fTerm');
+      const m = [...sel.options].find(o => o.value.toLowerCase() === (inv.term||'').toLowerCase());
+      if (m) sel.value = m.value;
+    }
+    if (inv.notes)        document.getElementById('fNotes').value = inv.notes;
+    document.getElementById('scanOverlay').classList.remove('open');
+    URL.revokeObjectURL(objUrl);
+    const btn = document.getElementById('scanInvoiceBtn');
+    btn.textContent = '✓ Scanned — Review the fields below';
+    btn.style.background = '#27ae60';
+    setTimeout(() => { btn.textContent = '📷 Scan Invoice — Auto Fill'; btn.style.background = ''; }, 4000);
+  } catch(e) {
+    document.getElementById('scanOverlay').classList.remove('open');
+    URL.revokeObjectURL(objUrl);
+    console.error('Scan error:', e);
+    alert('Could not read invoice.\n\n' + e.message + '\n\nTip: Make sure the photo is clear and well-lit.');
+  }
+}
+
 init();
 </script>
 <button id="backToTop" title="Back to top" onclick="scrollToTop()">↑</button>
+
+<!-- Hidden file input for invoice scanning -->
+<input type="file" id="scanFileInput" accept="image/*" capture="environment" style="display:none" onchange="processScanFile(this.files[0]);this.value=''">
+
+<!-- Scanning progress overlay -->
+<div class="scan-overlay" id="scanOverlay">
+  <img class="scan-preview" id="scanPreview" src="" alt="">
+  <div class="scan-spinner"></div>
+  <div class="scan-status" id="scanStatusMsg">Reading invoice...</div>
+</div>
+
+<!-- API Key Setup Modal -->
+<div class="modal-bg" id="apiKeyModalBg">
+  <div class="apikey-modal">
+    <h3>📷 Set Up Invoice Scanner</h3>
+    <p class="ak-sub">A free Google Gemini API key is needed (takes ~1 minute to get).</p>
+    <ol class="apikey-steps">
+      <li>Go to <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a></li>
+      <li>Sign in with your Google account</li>
+      <li>Click <strong>Create API Key</strong></li>
+      <li>Copy the key and paste it below</li>
+    </ol>
+    <input class="apikey-inp" type="text" id="apiKeyInput" placeholder="Paste your API key here (AIza...)"
+      onkeydown="if(event.key==='Enter')saveApiKeyAndScan()">
+    <p class="ak-note">Your key is saved only on this device and never shared.</p>
+    <div class="ak-row">
+      <button class="btn-cancel modal-actions" style="padding:9px 18px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;background:#555;color:#fff" onclick="document.getElementById('apiKeyModalBg').classList.remove('open')">Cancel</button>
+      <button class="btn-ak-save" onclick="saveApiKeyAndScan()">Save & Scan</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

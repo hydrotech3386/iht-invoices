@@ -782,7 +782,7 @@ let commentsId   = null;
 let commTab         = 'summary';
 let dateAdjId       = null;
 let adjPendingFilter = false;
-let appSettings  = {};            // { telegramBotToken }
+let appSettings  = {};            // { telegramBotToken, claudeApiKey }
 let salesmanChatIds = {};         // { salesmanName: chatId }
 
 function canWrite() { return session && (session.role==='management' || session.role==='admin' || session.role==='account'); }
@@ -2386,7 +2386,9 @@ function renderUserMgmt() {
     </tr>`;
   }).join('');
 
-  const botSection = (session.role === 'admin' || session.role === 'management') ? `
+  const isAdmin = session.role === 'admin' || session.role === 'management';
+  const maskedKey = appSettings.claudeApiKey ? '••••••••' + appSettings.claudeApiKey.slice(-4) : '';
+  const botSection = isAdmin ? `
     <div style="margin-bottom:16px;padding:12px;background:#0f3460;border-radius:8px;border:1px solid #1a3a5c">
       <div style="font-size:11px;color:#aaa;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🤖 Telegram Bot Token</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -2395,6 +2397,16 @@ function renderUserMgmt() {
           style="flex:1;min-width:180px;background:#1a1a2e;border:1px solid #333;color:#fff;border-radius:6px;padding:7px 10px;font-size:13px">
         <button onclick="saveBotToken()" style="background:#27ae60;border:none;color:#fff;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap">Save Token</button>
       </div>
+    </div>
+    <div style="margin-bottom:16px;padding:12px;background:#0f3460;border-radius:8px;border:1px solid #1a3a5c">
+      <div style="font-size:11px;color:#aaa;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📷 Claude API Key (Invoice Scanner)</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="text" id="claudeKeyInput" placeholder="sk-ant-..."
+          value="${maskedKey}"
+          style="flex:1;min-width:180px;background:#1a1a2e;border:1px solid #333;color:#fff;border-radius:6px;padding:7px 10px;font-size:13px">
+        <button onclick="saveClaudeApiKey()" style="background:#8e44ad;border:none;color:#fff;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap">Save Key</button>
+      </div>
+      <div style="font-size:11px;color:#555;margin-top:6px">${maskedKey ? '✓ Key configured — all staff can scan invoices.' : 'No key set — paste your Claude API key (sk-ant-...) to enable scanning for all staff.'}</div>
     </div>` : '';
 
   content.innerHTML = botSection + `<table class="user-table">
@@ -2663,19 +2675,40 @@ function setupBackToTop() {
 
 // ── Invoice Scanner ──────────────────────────────────────────
 const CLAUDE_KEY_STORE = 'iht_claude_key';
-function getClaudeKey() { return localStorage.getItem(CLAUDE_KEY_STORE) || ''; }
+function getClaudeKey() { return appSettings.claudeApiKey || localStorage.getItem(CLAUDE_KEY_STORE) || ''; }
 
 function openScanInvoice() {
-  if (!getClaudeKey()) { document.getElementById('apiKeyModalBg').classList.add('open'); setTimeout(() => document.getElementById('apiKeyInput').focus(), 300); return; }
+  if (!getClaudeKey()) {
+    if (session && (session.role === 'admin' || session.role === 'management')) {
+      document.getElementById('apiKeyModalBg').classList.add('open');
+      setTimeout(() => document.getElementById('apiKeyInput').focus(), 300);
+    } else {
+      alert('Invoice scanner is not set up yet.\n\nContact your admin to configure it.');
+    }
+    return;
+  }
   document.getElementById('scanFileInput').click();
 }
 
-function saveApiKeyAndScan() {
+async function saveApiKeyAndScan() {
   const key = document.getElementById('apiKeyInput').value.trim();
   if (!key) { alert('Please paste your API key first.'); return; }
+  appSettings.claudeApiKey = key;
   localStorage.setItem(CLAUDE_KEY_STORE, key);
+  firebase.database().ref('appSettings').update({ claudeApiKey: key }).catch(() => {});
   document.getElementById('apiKeyModalBg').classList.remove('open');
   setTimeout(() => document.getElementById('scanFileInput').click(), 150);
+}
+
+async function saveClaudeApiKey() {
+  const inp = document.getElementById('claudeKeyInput');
+  const key = inp ? inp.value.trim() : '';
+  if (!key || key.startsWith('•')) { alert('Please paste your full API key (sk-ant-...).'); return; }
+  appSettings.claudeApiKey = key;
+  localStorage.setItem(CLAUDE_KEY_STORE, key);
+  await firebase.database().ref('appSettings').update({ claudeApiKey: key });
+  alert('Claude API key saved.\n\nAll staff can now use the invoice scanner without entering a key.');
+  renderUserMgmt();
 }
 
 function fileToBase64(file) {
@@ -2776,7 +2809,7 @@ init();
 <div class="modal-bg" id="apiKeyModalBg">
   <div class="apikey-modal">
     <h3>📷 Set Up Invoice Scanner</h3>
-    <p class="ak-sub">A Claude API key is needed to read invoice photos (takes ~2 minutes to get).</p>
+    <p class="ak-sub">Paste your Claude API key to enable scanning for all staff. Key will be saved to Firebase.</p>
     <ol class="apikey-steps">
       <li>Go to <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com/settings/keys</a></li>
       <li>Sign up or log in to Anthropic Console</li>

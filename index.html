@@ -172,6 +172,7 @@
 
   /* Role-based visibility */
   body:not([data-role="account"]) .btn-add { display:none }
+  body:not([data-role="account"]) #scanInvoiceBtn { display:none !important }
   body:not([data-role="management"]) .btn-backup,
   body:not([data-role="management"]) .btn-usermgmt { display:none }
   body:not([data-role="management"]) .btn-commission { display:none }
@@ -2678,13 +2679,9 @@ const CLAUDE_KEY_STORE = 'iht_claude_key';
 function getClaudeKey() { return appSettings.claudeApiKey || localStorage.getItem(CLAUDE_KEY_STORE) || ''; }
 
 function openScanInvoice() {
+  if (!session || session.role !== 'account') return;
   if (!getClaudeKey()) {
-    if (session && (session.role === 'admin' || session.role === 'management')) {
-      document.getElementById('apiKeyModalBg').classList.add('open');
-      setTimeout(() => document.getElementById('apiKeyInput').focus(), 300);
-    } else {
-      alert('Invoice scanner is not set up yet.\n\nContact your admin to configure it.');
-    }
+    alert('Invoice scanner is not set up yet.\n\nContact your admin to configure it.');
     return;
   }
   document.getElementById('scanFileInput').click();

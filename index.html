@@ -2697,7 +2697,7 @@ async function processScanFile(file) {
 Extract these fields and return ONLY a valid JSON object, no explanation or markdown:
 {"invoiceNo":"invoice number","invoiceDate":"YYYY-MM-DD","customerName":"company or person billed","amount":total_as_number,"poNumber":"customer PO ref or null","term":"payment term like C.O.D or 30 days or null","notes":"brief goods/services description or null"}
 Use null for any field not found. For amount, return only the final grand total as a plain number.`;
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`, {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: file.type || 'image/jpeg', data: base64 } }] }], generationConfig: { temperature: 0.1 } })
     });

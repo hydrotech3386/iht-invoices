@@ -46,6 +46,7 @@
   .status-tab[data-status="paid"].active{background:#27ae60;border-color:#27ae60;color:#fff}
   .filter-select{background:#0f3460;border:1px solid #333;color:#fff;border-radius:6px;padding:5px 10px;font-size:12px}
 
+  .summary-toggle{display:none}
   .summary-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:16px 20px;background:#1a1a2e}
   .summary-card{background:#16213e;border:1px solid #0f3460;border-radius:8px;padding:12px 16px}
   .summary-card .card-label{font-size:11px;color:#aaa;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
@@ -370,7 +371,12 @@
     header h1{font-size:15px}
     .search-box{max-width:none;flex:1}
     .filter-bar{padding:8px 12px;-webkit-flex-shrink:0;flex-shrink:0}
-    .summary-cards{grid-template-columns:1fr 1fr;gap:8px;padding:10px 12px}
+    .summary-toggle{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#16213e;border-bottom:1px solid #0f3460;cursor:pointer;user-select:none;-webkit-user-select:none}
+    .summary-toggle span{font-size:12px;font-weight:600;color:#aaa;text-transform:uppercase;letter-spacing:.5px}
+    .summary-toggle .toggle-arrow{font-size:10px;color:#aaa;transition:transform .25s}
+    .summary-toggle.collapsed .toggle-arrow{transform:rotate(-90deg)}
+    .summary-cards{grid-template-columns:1fr 1fr;gap:8px;padding:10px 12px;transition:none}
+    .summary-cards.collapsed{display:none}
     .summary-card .card-value{font-size:14px}
     .toolbar{padding:8px 12px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;-webkit-flex-shrink:0;flex-shrink:0}
     .toolbar::-webkit-scrollbar{display:none}
@@ -472,6 +478,10 @@
   </select>
 </div>
 
+<div class="summary-toggle" id="summaryToggle" onclick="toggleSummary()">
+  <span>Summary</span>
+  <span class="toggle-arrow">▼</span>
+</div>
 <div class="summary-cards" id="summaryCards"></div>
 
 <div class="toolbar">
@@ -941,6 +951,7 @@ function applyRoleToUI() {
 
 function onLoggedIn() {
   applyRoleToUI();
+  initSummaryCollapse();
   renderSalesmanFilter(); renderMonthFilter(); renderSummary(); renderList();
   setupBackToTop();
   if (!fbReady) return;
@@ -1094,6 +1105,21 @@ function formatNumber(n) {
   return parts.join('.');
 }
 
+
+// ---- Summary collapse (mobile) ----
+function toggleSummary() {
+  const cards = document.getElementById('summaryCards');
+  const toggle = document.getElementById('summaryToggle');
+  const collapsed = cards.classList.toggle('collapsed');
+  toggle.classList.toggle('collapsed', collapsed);
+  localStorage.setItem('iht_summary_collapsed', collapsed ? '1' : '0');
+}
+function initSummaryCollapse() {
+  if (localStorage.getItem('iht_summary_collapsed') === '1') {
+    document.getElementById('summaryCards').classList.add('collapsed');
+    document.getElementById('summaryToggle').classList.add('collapsed');
+  }
+}
 
 // ---- Summary cards ----
 function renderSummary() {

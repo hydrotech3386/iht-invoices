@@ -879,6 +879,29 @@ async function saveBotToken() {
   alert('Bot token saved.');
 }
 
+// ---- Device binding ----
+function getDeviceId() {
+  let id = localStorage.getItem('iht_device_id');
+  if (!id) { id = uid() + uid(); localStorage.setItem('iht_device_id', id); }
+  return id;
+}
+function getDeviceLabel() {
+  const ua = navigator.userAgent;
+  if (/iPhone/i.test(ua)) return 'iPhone';
+  if (/iPad/i.test(ua)) return 'iPad';
+  if (/Android.*Mobile/i.test(ua)) return 'Android Phone';
+  if (/Android/i.test(ua)) return 'Android Tablet';
+  if (/Windows/i.test(ua)) return 'Windows PC';
+  if (/Macintosh/i.test(ua)) return 'Mac';
+  if (/Linux/i.test(ua)) return 'Linux PC';
+  return 'Browser';
+}
+function isMobileDevice() {
+  return /iPhone|iPad|Android/i.test(navigator.userAgent);
+}
+// Returns 'mobile' or 'desktop'
+function getDeviceType() { return isMobileDevice() ? 'mobile' : 'desktop'; }
+
 // ---- Auth ----
 async function sha256(str) {
   if (crypto && crypto.subtle) {
@@ -937,6 +960,21 @@ async function loginAsync() {
     const [fuid, user] = entry;
     if (user.role === 'pending') { errEl.textContent = 'Account pending. Contact admin to activate.'; return; }
     if (user.role === 'suspended') { errEl.textContent = 'This account has been suspended. Contact admin.'; return; }
+    // Device binding check (1 mobile + 1 desktop allowed per account)
+    const deviceId = getDeviceId();
+    const devType = getDeviceType(); // 'mobile' or 'desktop'
+    const devKey = devType === 'mobile' ? 'linkedMobile' : 'linkedDesktop';
+    const linked = user[devKey];
+    if (linked) {
+      if (linked.id !== deviceId) {
+        const typeName = devType === 'mobile' ? 'mobile device' : 'desktop/laptop';
+        errEl.textContent = `Login blocked — this account already has a linked ${typeName} (${linked.label||'Unknown'}). Contact admin to remove the existing link first.`;
+        document.getElementById('loginPass').value = '';
+        return;
+      }
+    } else {
+      await usersRef.child(fuid).update({ [devKey]: { id: deviceId, label: getDeviceLabel(), linkedAt: Date.now() } });
+    }
     session = { name: user.name||user.username, email: user.email||user.username, role: user.role, salesman: user.salesman||null, uid: fuid, telegramChatId: user.telegramChatId||null };
     const deviceToken = uid() + uid();
     await usersRef.child(fuid).update({ activeSession: deviceToken });
@@ -2536,6 +2574,14 @@ function renderUserMgmt() {
     const isPending = u.role === 'pending';
     const isSelf = fuid === session.uid;
     const smSel = state.salesmen.map(s => `<option value="${s}"${u.salesman===s?' selected':''}>${s}</option>`).join('');
+    const mob = u.linkedMobile, dsk = u.linkedDesktop;
+    const devSlot = (dev, type, key) => dev
+      ? `<div style="margin-bottom:4px">
+           <span style="font-size:11px;color:#4fc3f7;font-weight:600">${type}: ${dev.label||'?'}</span>
+           ${!isSelf ? `<button onclick="removeDeviceLink('${fuid}','${key}')" style="margin-left:6px;font-size:10px;padding:1px 6px;background:#3d0010;border:1px solid #e94560;color:#ff6b6b;border-radius:3px;cursor:pointer">✕</button>` : ''}
+         </div>`
+      : `<div style="font-size:10px;color:#333;margin-bottom:4px">${type}: <span style="font-style:italic">none</span></div>`;
+    const devCell = (mob||dsk) ? devSlot(mob,'📱 Mobile','linkedMobile')+devSlot(dsk,'💻 Desktop','linkedDesktop') : `<span style="color:#333;font-size:11px;font-style:italic">None linked</span>`;
     return `<tr>
       <td style="font-weight:600;color:#fff">${u.name||u.username||'—'}${isSelf?' <span class="self-badge">YOU</span>':''}<br><span style="font-size:11px;color:#555;font-weight:400">${u.email||''}</span></td>
       <td>
@@ -2549,6 +2595,7 @@ function renderUserMgmt() {
           <option value="">—</option>${smSel}
         </select>
       </td>
+      <td>${devCell}</td>
       <td style="color:#555;font-size:12px">${u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-MY') : '—'}</td>
       <td style="text-align:right;white-space:nowrap">
         ${isPending ? `<button class="btn-activate" onclick="activateUser('${fuid}')">✓ Activate</button>` :
@@ -2582,7 +2629,7 @@ function renderUserMgmt() {
     </div>` : '';
 
   content.innerHTML = botSection + `<table class="user-table">
-    <thead><tr><th>Username</th><th>Role</th><th>Salesman</th><th>Created</th><th></th></tr></thead>
+    <thead><tr><th>Username</th><th>Role</th><th>Salesman</th><th>Device</th><th>Created</th><th></th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }
@@ -2612,6 +2659,15 @@ async function saveUserRole(fuid) {
   usersCache[fuid].salesman = salesman;
   await usersRef.child(fuid).update({ role, salesman: salesman||null });
   rebuildChatIds(usersCache);
+  renderUserMgmt();
+}
+
+async function removeDeviceLink(fuid, devKey) {
+  const u = usersCache[fuid];
+  const typeName = devKey === 'linkedMobile' ? 'mobile' : 'desktop';
+  if (!confirm(`Remove ${typeName} device link for "${u.name||u.email}"?\nThey can link a new ${typeName} device on their next login from that device.`)) return;
+  await usersRef.child(fuid).update({ [devKey]: null });
+  usersCache[fuid] = { ...usersCache[fuid], [devKey]: null };
   renderUserMgmt();
 }
 
@@ -2693,8 +2749,29 @@ function mergeBackup() {
 }
 
 // ---- Profile ----
-function openProfileModal() {
+async function openProfileModal() {
   if (!session) return;
+  document.getElementById('profileBg').classList.add('open');
+  document.getElementById('profileContent').innerHTML = '<div style="color:#555;text-align:center;padding:16px">Loading...</div>';
+  const snap = await usersRef.child(session.uid).once('value');
+  const userData = snap.val() || {};
+  const myDeviceId = getDeviceId();
+  const myDevType = getDeviceType();
+  const slots = [
+    { key: 'linkedMobile', label: '📱 Mobile', dev: userData.linkedMobile },
+    { key: 'linkedDesktop', label: '💻 Desktop / Laptop', dev: userData.linkedDesktop }
+  ];
+  const deviceRows = slots.map(s => {
+    const isThis = s.dev && s.dev.id === myDeviceId;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #0f3460">
+      <span style="font-size:12px;color:#aaa;min-width:120px">${s.label}</span>
+      ${s.dev
+        ? `<span style="font-size:13px;color:#4fc3f7;font-weight:600">${s.dev.label||'Device'}</span>
+           ${isThis ? '<span style="color:#5dfc8d;font-size:10px">✓ This device</span>' : ''}
+           <button onclick="unlinkMyDevice('${s.key}')" style="margin-left:auto;font-size:11px;padding:3px 10px;background:#3d0010;border:1px solid #e94560;color:#ff6b6b;border-radius:4px;cursor:pointer">✕ Unlink</button>`
+        : `<span style="color:#555;font-size:12px;font-style:italic">Not linked</span>`}
+    </div>`;
+  }).join('');
   document.getElementById('profileContent').innerHTML = `
     <div class="form-row">
       <label>Name</label>
@@ -2704,6 +2781,8 @@ function openProfileModal() {
       <label>Email</label>
       <input type="text" value="${session.email||''}" disabled style="opacity:.6">
     </div>
+    <div class="section-divider">Linked Devices</div>
+    <div style="background:#0d1628;border-radius:7px;padding:4px 12px;margin-bottom:10px">${deviceRows}</div>
     <div class="section-divider">Telegram Notifications</div>
     <div class="form-row">
       <label>Your Telegram Chat ID</label>
@@ -2715,8 +2794,13 @@ function openProfileModal() {
       Open Telegram → search <b style="color:#4fc3f7">@userinfobot</b> → press Start.<br>
       It replies instantly with your ID number.
     </p>`;
-  document.getElementById('profileBg').classList.add('open');
-  setTimeout(() => document.getElementById('myTelegramId').focus(), 100);
+  setTimeout(() => document.getElementById('myTelegramId')?.focus(), 100);
+}
+async function unlinkMyDevice(devKey) {
+  const typeName = devKey === 'linkedMobile' ? 'mobile' : 'desktop';
+  if (!confirm(`Remove your linked ${typeName}?\nA new ${typeName} device can be linked on the next login from that device.`)) return;
+  await usersRef.child(session.uid).update({ [devKey]: null });
+  openProfileModal();
 }
 function closeProfileModal() {
   document.getElementById('profileBg').classList.remove('open');

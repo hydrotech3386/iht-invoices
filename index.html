@@ -348,6 +348,33 @@
   .inv-card-acts .btn-rp{flex:2;padding:9px 8px;font-size:13px}
   .inv-card-acts .btn-re,.inv-card-acts .btn-rd{flex:1;padding:9px 8px;font-size:13px}
   .inv-card-acts .btn-cmt,.inv-card-acts .btn-cost,.inv-card-acts .btn-adj-req,.inv-card-acts .btn-adj-review,.inv-card-acts .btn-adj-edit{flex:1;padding:9px 8px;font-size:13px;margin-left:0}
+  /* Invoice Detail Popup */
+  .inv-detail-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:14px}
+  .inv-detail-no{font-size:20px;font-weight:700;color:#fff;margin-bottom:3px}
+  .inv-detail-cust{font-size:14px;color:#e0e0e0;margin-bottom:2px}
+  .inv-detail-contact{font-size:12px;color:#888}
+  .inv-detail-badge{font-size:12px!important;padding:4px 12px!important}
+  .inv-detail-section{background:#0d1628;border-radius:7px;padding:12px 14px;margin-bottom:10px}
+  .inv-detail-section-label{font-size:10px;color:#555;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;font-weight:600}
+  .inv-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 20px}
+  .inv-detail-field{display:flex;flex-direction:column;gap:2px}
+  .inv-detail-field-label{font-size:10px;color:#555;text-transform:uppercase;letter-spacing:.5px}
+  .inv-detail-field-val{font-size:13px;color:#e0e0e0}
+  .inv-detail-amounts{display:flex;gap:0;flex-wrap:wrap}
+  .inv-detail-amt-item{flex:1;min-width:80px;display:flex;flex-direction:column;gap:2px;padding:6px 10px;border-right:1px solid #0f3460}
+  .inv-detail-amt-item:first-child{padding-left:0}
+  .inv-detail-amt-item:last-child{border-right:none}
+  .inv-detail-amt-val{font-size:15px;font-weight:700;color:#fff}
+  .inv-detail-notes-text{font-size:13px;color:#d0d0d0;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+  .inv-detail-notes-text.empty{color:#555;font-style:italic}
+  .inv-detail-pay-row{display:flex;align-items:center;gap:12px;padding:6px 0;border-bottom:1px solid #0f3460;font-size:13px;flex-wrap:wrap}
+  .inv-detail-pay-row:last-child{border-bottom:none}
+  .inv-detail-pay-date{color:#aaa;min-width:90px}
+  .inv-detail-pay-amt{color:#5dfc8d;font-weight:600;margin-left:auto}
+  .inv-detail-pay-note{color:#666;font-size:11px;flex-basis:100%;padding-left:0}
+  .inv-detail-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .inv-clickable{cursor:pointer}
+  .inv-notes-dot{display:inline-block;width:6px;height:6px;background:#f39c12;border-radius:50%;margin-left:5px;vertical-align:middle;title:'Has notes'}
 
   /* Invoice Scanner */
   .btn-scan{background:#8e44ad;color:#fff;border:none;border-radius:6px;padding:10px 14px;font-size:13px;font-weight:600;cursor:pointer;width:100%;margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:7px;transition:background .15s}
@@ -708,6 +735,17 @@
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeCommentsModal()">Close</button>
       <button class="btn-confirm" onclick="addComment()">Post Comment</button>
+    </div>
+  </div>
+</div>
+
+<!-- Invoice Detail Modal -->
+<div class="modal-bg" id="invDetailBg" onclick="if(event.target===this)closeInvoiceDetail()">
+  <div class="modal" style="max-width:580px">
+    <div id="invDetailContent"></div>
+    <div class="modal-actions" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <button class="btn-cancel" onclick="closeInvoiceDetail()">Close</button>
+      <div class="inv-detail-actions" id="invDetailActions"></div>
     </div>
   </div>
 </div>
@@ -1366,9 +1404,9 @@ function renderList() {
       `<button class="btn-cmt" onclick="openCommentsModal('${inv.id}')">💬${cmtCount > 0 ? cmtCount : ''}</button>` +
       adjBtn;
 
-    rows += `<tr class="${rowCls}" data-inv-id="${inv.id}">
+    rows += `<tr class="${rowCls} inv-clickable" data-inv-id="${inv.id}" onclick="if(!event.target.closest('button,a'))openInvoiceDetail('${inv.id}')">
       <td class="td-date">${dateDisplay}</td>
-      <td class="td-invno">${inv.invoiceNo||'—'} <span class="status-badge ${badgeS}" style="font-size:9px;padding:1px 4px;vertical-align:middle">${statusLabel(badgeS)}</span></td>
+      <td class="td-invno">${inv.invoiceNo||'—'} <span class="status-badge ${badgeS}" style="font-size:9px;padding:1px 4px;vertical-align:middle">${statusLabel(badgeS)}</span>${inv.notes ? `<span class="inv-notes-dot" title="Has notes/remarks"></span>` : ''}</td>
       <td class="td-customer" title="${inv.customer||''}">${inv.customer||'—'}</td>
       <td class="td-po" title="${inv.projectRef||''}">${inv.projectRef||''}</td>
       <td class="td-agent">${inv.salesman||'—'}</td>
@@ -1453,9 +1491,9 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
         ${adjBtnC}
       </div>`;
 
-    html += `<div class="inv-card ${cardCls}" data-inv-id="${inv.id}">
+    html += `<div class="inv-card ${cardCls} inv-clickable" data-inv-id="${inv.id}" onclick="if(!event.target.closest('button,a'))openInvoiceDetail('${inv.id}')">
       <div class="inv-card-hd">
-        <span class="inv-card-no">${inv.invoiceNo||'—'}</span>
+        <span class="inv-card-no">${inv.invoiceNo||'—'}${inv.notes ? `<span class="inv-notes-dot" title="Has notes/remarks"></span>` : ''}</span>
         <span class="status-badge ${badgeS}">${statusLabel(badgeS)}</span>
         <span class="inv-card-amt">${fmtRM(tp)}</span>
       </div>
@@ -2658,6 +2696,120 @@ async function saveMyTelegram() {
   usersRef.once('value').then(snap => rebuildChatIds(snap.val() || {}));
   closeProfileModal();
   alert(chatId ? 'Telegram Chat ID saved. You will now receive notifications.' : 'Telegram Chat ID cleared.');
+}
+
+// ---- Invoice Detail Popup ----
+function openInvoiceDetail(id) {
+  const inv = state.invoices.find(i => i.id === id);
+  if (!inv) return;
+  const s = computeStatus(inv);
+  const overdue = isOverdue(inv);
+  const badgeS = overdue ? 'overdue' : s;
+  const tp = totalPayable(inv);
+  const paid = amountPaid(inv);
+  const bal = Math.max(0, tp - paid);
+  const cost = totalCost(inv);
+  const hasCost = !!(inv.costItems && inv.costItems.length > 0) || inv.cost > 0;
+  const profit = hasCost ? Math.max(0, tp - cost) : null;
+  const pays = inv.payments || [];
+  const overdueD = overdue ? daysOverdueFromTerm(inv) : 0;
+  const days = daysSince(inv.invoiceDate);
+  const effDate = effectiveDate(inv);
+
+  const fields = [
+    { label: 'Invoice Date', val: fmtDate(effDate) + (inv.adjustedDate ? ` <span class="adj-badge">ADJ</span>` : '') },
+    { label: 'Payment Term', val: inv.term || '—' },
+    { label: 'Sales Agent', val: inv.salesman || '—' },
+    inv.projectRef ? { label: 'Ref / PO No', val: inv.projectRef } : null,
+    inv.contact    ? { label: 'Contact', val: inv.contact } : null,
+    overdue
+      ? { label: 'Overdue By', val: `<span style="color:#e94560;font-weight:600">${overdueD} day(s)</span>` }
+      : days !== null ? { label: 'Invoice Age', val: `${days} day(s)` } : null,
+  ].filter(Boolean);
+
+  const gridHtml = fields.map(f =>
+    `<div class="inv-detail-field"><span class="inv-detail-field-label">${f.label}</span><span class="inv-detail-field-val">${f.val}</span></div>`
+  ).join('');
+
+  const amtItems = [
+    { label: 'Amount', val: fmtRM(inv.amount || 0), color: '' },
+    inv.sst ? { label: 'SST (6%)', val: fmtRM(inv.sst), color: '' } : null,
+    { label: 'Total', val: fmtRM(tp), color: '#f39c12' },
+    s !== 'paid' ? { label: 'Balance Due', val: fmtRM(bal), color: '#4fc3f7' } : null,
+    s === 'paid' || s === 'partial' ? { label: 'Collected', val: fmtRM(paid), color: '#5dfc8d' } : null,
+  ].filter(Boolean);
+
+  const amtsHtml = amtItems.map(a =>
+    `<div class="inv-detail-amt-item">
+      <span class="inv-detail-field-label">${a.label}</span>
+      <span class="inv-detail-amt-val" style="${a.color ? 'color:'+a.color : ''}">${a.val}</span>
+    </div>`
+  ).join('');
+
+  const costHtml = (canCost() || (session && session.role === 'salesman' && hasCost))
+    ? `<div class="inv-detail-section">
+        <div class="inv-detail-section-label">Cost &amp; Profit</div>
+        <div class="inv-detail-amounts">
+          <div class="inv-detail-amt-item">
+            <span class="inv-detail-field-label">Cost</span>
+            <span class="inv-detail-amt-val">${hasCost ? fmtRM(cost) : '<span style="color:#555;font-style:italic">Not entered</span>'}</span>
+          </div>
+          <div class="inv-detail-amt-item">
+            <span class="inv-detail-field-label">Profit</span>
+            <span class="inv-detail-amt-val" style="color:#5dfc8d">${profit !== null ? fmtRM(profit) : '<span style="color:#e67e22;font-size:12px;font-style:italic">Pending cost</span>'}</span>
+          </div>
+        </div>
+      </div>` : '';
+
+  const notesHtml = `<div class="inv-detail-section">
+    <div class="inv-detail-section-label">Notes / Remarks</div>
+    ${inv.notes
+      ? `<div class="inv-detail-notes-text">${inv.notes.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</div>`
+      : `<div class="inv-detail-notes-text empty">No notes for this invoice.</div>`}
+  </div>`;
+
+  const payHtml = pays.length
+    ? pays.map(p => `<div class="inv-detail-pay-row">
+        <span class="inv-detail-pay-date">${fmtDate(p.date)}</span>
+        <span class="inv-detail-pay-amt">${fmtRM(p.amount)}</span>
+        ${p.note ? `<span class="inv-detail-pay-note">${p.note.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>` : ''}
+      </div>`).join('')
+    : `<div style="color:#555;font-style:italic;font-size:12px">No payments recorded yet.</div>`;
+
+  const cmtCount = Array.isArray(inv.comments) ? inv.comments.length : 0;
+
+  document.getElementById('invDetailContent').innerHTML = `
+    <div class="inv-detail-hd">
+      <div>
+        <div class="inv-detail-no">${inv.invoiceNo || '—'}</div>
+        <div class="inv-detail-cust">${inv.customer || '—'}</div>
+      </div>
+      <span class="status-badge ${badgeS} inv-detail-badge">${statusLabel(badgeS)}</span>
+    </div>
+    <div class="inv-detail-section">
+      <div class="inv-detail-grid">${gridHtml}</div>
+    </div>
+    <div class="inv-detail-section">
+      <div class="inv-detail-section-label">Invoice Amount</div>
+      <div class="inv-detail-amounts">${amtsHtml}</div>
+    </div>
+    ${costHtml}
+    ${notesHtml}
+    <div class="inv-detail-section">
+      <div class="inv-detail-section-label">Payment History</div>
+      ${payHtml}
+    </div>`;
+
+  let actHtml = '';
+  if (canPay()) actHtml += `<button class="btn-confirm" onclick="closeInvoiceDetail();openPaymentModal('${id}')">💰 Payment</button>`;
+  if (canEdit()) actHtml += `<button class="btn-re" style="padding:9px 14px" onclick="closeInvoiceDetail();openInvoiceModal('${id}')">✏ Edit</button>`;
+  actHtml += `<button class="btn-cmt" style="padding:9px 14px" onclick="closeInvoiceDetail();openCommentsModal('${id}')">💬${cmtCount > 0 ? ' '+cmtCount : ''}</button>`;
+  document.getElementById('invDetailActions').innerHTML = actHtml;
+
+  document.getElementById('invDetailBg').classList.add('open');
+}
+function closeInvoiceDetail() {
+  document.getElementById('invDetailBg').classList.remove('open');
 }
 
 // ---- Comments ----

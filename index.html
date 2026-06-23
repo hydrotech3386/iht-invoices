@@ -478,7 +478,7 @@
     <button class="status-tab" data-status="partial" onclick="setFilter('partial')">Partial</button>
     <button class="status-tab" data-status="paid" onclick="setFilter('paid')">Paid</button>
   </div>
-  <select class="filter-select" id="salesmanFilter" onchange="renderList()">
+  <select class="filter-select" id="salesmanFilter" onchange="renderSummary();renderList()">
     <option value="">All Agents</option>
   </select>
   <select class="filter-select" id="monthFilter" onchange="renderList()">
@@ -1157,8 +1157,12 @@ function initSummaryCollapse() {
 // ---- Summary cards ----
 function renderSummary() {
   let invs = state.invoices;
-  if (session && session.role==='salesman' && session.salesman)
+  if (session && session.role==='salesman' && session.salesman) {
     invs = invs.filter(inv => inv.salesman===session.salesman);
+  } else {
+    const smF = document.getElementById('salesmanFilter');
+    if (smF && smF.value) invs = invs.filter(inv => inv.salesman===smF.value);
+  }
   let outstanding=0,outN=0,partialTot=0,partialN=0,paidTot=0,paidN=0,totalTot=0;
   invs.forEach(inv => {
     const s = computeStatus(inv);

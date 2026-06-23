@@ -96,14 +96,25 @@
   .inv-table{width:100%;border-collapse:collapse;font-size:13px}
   .inv-table th{color:#555;font-size:10px;text-transform:uppercase;letter-spacing:.5px;padding:7px 10px;border-bottom:2px solid #0f3460;white-space:nowrap;text-align:left;font-weight:600}
   .inv-table td{padding:9px 10px;border-bottom:1px solid #0a1628;vertical-align:middle;white-space:nowrap}
-  .inv-table tbody tr:hover td{background:#111d3a}
+  .inv-table tbody tr:hover td{filter:brightness(1.15)}
   .comm-inv-link{font-size:11px;color:#aaa;margin-bottom:3px;cursor:pointer}
   .comm-inv-link:hover{color:#fff;text-decoration:underline}
-  .inv-table tbody tr.status-paid td{opacity:.6}
-  .inv-table tbody tr td:first-child{border-left:3px solid transparent}
-  .inv-table tbody tr.status-unpaid td:first-child{border-left:3px solid #2980b9}
-  .inv-table tbody tr.status-partial td:first-child{border-left:3px solid #e67e22}
-  .inv-table tbody tr.status-paid td:first-child{border-left:3px solid #27ae60}
+  /* Paid — green tint, slightly dimmed */
+  .inv-table tbody tr.status-paid td{background:#0b1a0b;color:#7aaa7a}
+  .inv-table tbody tr.status-paid .td-invno,.inv-table tbody tr.status-paid .td-customer{color:#5dae5d}
+  /* Unpaid — subtle blue tint */
+  .inv-table tbody tr.status-unpaid td{background:#0b1322}
+  /* Partial — subtle orange tint */
+  .inv-table tbody tr.status-partial td{background:#1a1200}
+  /* Overdue — strong red tint */
+  .inv-table tbody tr.status-overdue td{background:#200808}
+  .inv-table tbody tr.status-overdue .td-invno,.inv-table tbody tr.status-overdue .td-customer{color:#ff8080}
+  /* Left border stripe */
+  .inv-table tbody tr td:first-child{border-left:4px solid transparent}
+  .inv-table tbody tr.status-unpaid td:first-child{border-left-color:#2980b9}
+  .inv-table tbody tr.status-partial td:first-child{border-left-color:#e67e22}
+  .inv-table tbody tr.status-paid td:first-child{border-left-color:#27ae60}
+  .inv-table tbody tr.status-overdue td:first-child{border-left-color:#e94560}
   .td-invno{font-weight:700;color:#fff;min-width:90px}
   .td-customer{color:#e0e0e0;max-width:180px;overflow:hidden;text-overflow:ellipsis}
   .td-contact{color:#aaa;font-size:12px;max-width:110px;overflow:hidden;text-overflow:ellipsis}
@@ -321,10 +332,11 @@
   /* Mobile cards */
   .inv-cards-wrap{padding:4px 0 24px}
   .inv-month-label{color:#555;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:10px 14px 4px}
-  .inv-card{background:#16213e;border-left:3px solid transparent;border:1px solid #0f3460;border-left-width:3px;border-radius:8px;margin:0 10px 8px;padding:11px 12px}
-  .inv-card.status-unpaid{border-left-color:#2980b9}
-  .inv-card.status-partial{border-left-color:#e67e22}
-  .inv-card.status-paid{border-left-color:#27ae60;opacity:.65}
+  .inv-card{border-left:4px solid transparent;border:1px solid #0f3460;border-left-width:4px;border-radius:8px;margin:0 10px 8px;padding:11px 12px}
+  .inv-card.status-unpaid{background:#0d1828;border-left-color:#2980b9}
+  .inv-card.status-partial{background:#1a1200;border-left-color:#e67e22}
+  .inv-card.status-paid{background:#0b1a0b;border-left-color:#27ae60;opacity:.8}
+  .inv-card.status-overdue{background:#200808;border-left-color:#e94560;border-left-width:5px}
   .inv-card-hd{display:flex;align-items:center;gap:8px;margin-bottom:5px}
   .inv-card-no{font-weight:700;color:#fff;font-size:14px;flex-shrink:0}
   .inv-card-amt{margin-left:auto;font-weight:700;color:#fff;font-size:14px;white-space:nowrap}
@@ -1075,6 +1087,25 @@ function daysOverdue(inv) {
   const today = new Date(); today.setHours(0,0,0,0);
   return Math.max(0, Math.floor((today-due)/86400000));
 }
+function termDaysNum(inv) {
+  const m = (inv.term||'').match(/(\d+)\s*DAY/i);
+  return m ? parseInt(m[1]) : 0;
+}
+function isOverdue(inv) {
+  if (computeStatus(inv) === 'paid') return false;
+  if (!inv.invoiceDate) return false;
+  const due = new Date(inv.invoiceDate + 'T00:00:00');
+  due.setDate(due.getDate() + termDaysNum(inv));
+  const today = new Date(); today.setHours(0,0,0,0);
+  return due < today;
+}
+function daysOverdueFromTerm(inv) {
+  if (!inv.invoiceDate) return 0;
+  const due = new Date(inv.invoiceDate + 'T00:00:00');
+  due.setDate(due.getDate() + termDaysNum(inv));
+  const today = new Date(); today.setHours(0,0,0,0);
+  return Math.max(0, Math.floor((today - due) / 86400000));
+}
 
 // ---- Amount input formatting ----
 function formatAmountInput(input) {
@@ -1271,12 +1302,18 @@ function renderList() {
 
   items.forEach(inv => {
     const s = computeStatus(inv);
+    const overdue = isOverdue(inv);
+    const rowCls = overdue ? 'status-overdue' : `status-${s}`;
+    const badgeS = overdue ? 'overdue' : s;
     const paid = amountPaid(inv);
     const tp = totalPayable(inv);
     const bal = Math.max(0, tp - paid);
     const days = daysSince(inv.invoiceDate);
     const dClass = days === null ? '' : days >= 90 ? 'old' : days >= 60 ? 'warn' : days >= 30 ? 'due' : '';
-    const daysPill = days !== null ? `<span class="days-pill ${dClass}">${days}d</span>` : '—';
+    const overdueD = overdue ? daysOverdueFromTerm(inv) : 0;
+    const daysPill = overdue
+      ? `<span class="days-pill old">${overdueD}d overdue</span>`
+      : days !== null ? `<span class="days-pill ${dClass}">${days}d</span>` : '—';
     const balCell = s==='partial' ? fmtRM(bal) : '';
 
     if (groupByMonth) {
@@ -1325,9 +1362,9 @@ function renderList() {
       `<button class="btn-cmt" onclick="openCommentsModal('${inv.id}')">💬${cmtCount > 0 ? cmtCount : ''}</button>` +
       adjBtn;
 
-    rows += `<tr class="status-${s}" data-inv-id="${inv.id}">
+    rows += `<tr class="${rowCls}" data-inv-id="${inv.id}">
       <td class="td-date">${dateDisplay}</td>
-      <td class="td-invno">${inv.invoiceNo||'—'}</td>
+      <td class="td-invno">${inv.invoiceNo||'—'} <span class="status-badge ${badgeS}" style="font-size:9px;padding:1px 4px;vertical-align:middle">${statusLabel(badgeS)}</span></td>
       <td class="td-customer" title="${inv.customer||''}">${inv.customer||'—'}</td>
       <td class="td-po" title="${inv.projectRef||''}">${inv.projectRef||''}</td>
       <td class="td-agent">${inv.salesman||'—'}</td>
@@ -1364,12 +1401,18 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
   let lastMonth = '';
   items.forEach(inv => {
     const s = computeStatus(inv);
+    const overdue = isOverdue(inv);
+    const cardCls = overdue ? 'status-overdue' : `status-${s}`;
+    const badgeS = overdue ? 'overdue' : s;
     const paid = amountPaid(inv);
     const tp = totalPayable(inv);
     const bal = Math.max(0, tp - paid);
     const days = daysSince(inv.invoiceDate);
     const dClass = days === null ? '' : days >= 90 ? 'old' : days >= 60 ? 'warn' : days >= 30 ? 'due' : '';
-    const daysPill = days !== null ? `<span class="days-pill ${dClass}">${days}d</span>` : '';
+    const overdueD = overdue ? daysOverdueFromTerm(inv) : 0;
+    const daysPill = overdue
+      ? `<span class="days-pill old">${overdueD}d overdue</span>`
+      : days !== null ? `<span class="days-pill ${dClass}">${days}d</span>` : '';
 
     if (groupByMonth) {
       const month = (inv.invoiceDate||'').slice(0,7);
@@ -1406,10 +1449,10 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
         ${adjBtnC}
       </div>`;
 
-    html += `<div class="inv-card status-${s}" data-inv-id="${inv.id}">
+    html += `<div class="inv-card ${cardCls}" data-inv-id="${inv.id}">
       <div class="inv-card-hd">
         <span class="inv-card-no">${inv.invoiceNo||'—'}</span>
-        <span class="status-badge ${s}">${statusLabel(s)}</span>
+        <span class="status-badge ${badgeS}">${statusLabel(badgeS)}</span>
         <span class="inv-card-amt">${fmtRM(tp)}</span>
       </div>
       <div class="inv-card-cust">${inv.customer||'—'}</div>

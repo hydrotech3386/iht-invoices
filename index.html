@@ -1941,14 +1941,20 @@ function renderCommissionPage() {
     smInvs.forEach(inv => {
       const total = (inv.amount || 0) + (inv.sst || 0);
       const cost = totalCost(inv);
-      const profit = Math.max(0, total - cost);
+      const hasCost = !!(inv.costItems && inv.costItems.length > 0) || inv.cost > 0;
+      const profit = hasCost ? Math.max(0, total - cost) : null;
       const pays = inv.payments || [];
       const effDate = effectiveDate(inv);
       const adjNote = inv.adjustedDate ? `<div style="font-size:10px;margin-top:2px"><span class="adj-badge">ADJ</span><span style="color:#4fc3f7">${fmtDate(inv.adjustedDate)}</span></div>` : '';
       const invNo = `<span style="color:#4fc3f7;font-weight:700;cursor:pointer;text-decoration:underline" onclick="goToInvoice('${inv.id}')" title="Go to invoice">${inv.invoiceNo||'—'}</span>${adjNote}`;
       const cust = `<span style="color:#aaa;max-width:130px;overflow:hidden;text-overflow:ellipsis;display:inline-block">${inv.customer||'—'}</span>`;
-      const costCell = `<span style="color:#aaa">${cost > 0 ? fmtRM(cost) : '—'}</span>`;
-      const profitCell = `<span class="profit-val">${profit > 0 ? fmtRM(profit) : '—'}</span>`;
+      const costCell = hasCost
+        ? `<span style="color:#aaa">${cost > 0 ? fmtRM(cost) : '—'}</span>`
+        : `<span style="color:#555;font-style:italic">—</span>`;
+      const profitCell = hasCost
+        ? `<span class="profit-val">${profit > 0 ? fmtRM(profit) : '—'}</span>`
+        : `<span style="color:#e67e22;font-size:11px;font-style:italic">Pending cost</span>`;
+      const pendingComm = `<span style="color:#e67e22;font-size:11px;font-style:italic">Pending</span>`;
 
       if (!pays.length) {
         tbodyRows += `<tr class="inv-row no-pay-row">
@@ -1964,8 +1970,8 @@ function renderCommissionPage() {
           const days = daysBetween(effectiveDate(inv), p.date);
           const rate = commissionRate(days);
           const fraction = total > 0 ? p.amount / total : 0;
-          const comm = profit * fraction * rate;
-          smTotal += comm;
+          const comm = hasCost ? profit * fraction * rate : null;
+          if (hasCost) smTotal += comm;
           const { pct: ratePct, cls: rateCls } = commissionRateLabel(days);
           const ratePill = `<span class="rate-pill ${rateCls}">${ratePct}</span>`;
 
@@ -1979,14 +1985,14 @@ function renderCommissionPage() {
               <td class="r" style="color:#aaa">${fmtDate(p.date)}</td>
               <td class="c">${days}d</td>
               <td class="c">${ratePill}</td>
-              <td class="r comm-val">${fmtRM(comm)}</td>
+              <td class="r comm-val">${hasCost ? fmtRM(comm) : pendingComm}</td>
             </tr>`;
           } else {
             tbodyRows += `<tr class="pay-row">
               <td class="r" style="color:#aaa">${fmtDate(p.date)}</td>
               <td class="c">${days}d</td>
               <td class="c">${ratePill}</td>
-              <td class="r comm-val">${fmtRM(comm)}</td>
+              <td class="r comm-val">${hasCost ? fmtRM(comm) : pendingComm}</td>
             </tr>`;
           }
         });

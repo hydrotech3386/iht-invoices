@@ -1757,10 +1757,14 @@ function openCommission() {
   if (!months.size) {
     sel.innerHTML = '<option value="">No invoices yet</option>';
   } else {
-    sel.innerHTML = [...months].sort().reverse().map(m => {
-      const [y,mo] = m.split('-');
-      return `<option value="${m}"${m===curMonth?' selected':''}>${new Date(y,mo-1,1).toLocaleString('en-GB',{month:'long',year:'numeric'})}</option>`;
-    }).join('');
+    const yr = new Date().getFullYear();
+    const ytdSelected = curMonth === 'YTD' || !curMonth;
+    sel.innerHTML =
+      `<option value="YTD"${ytdSelected?' selected':''}>YTD ${yr} (Year to Date)</option>` +
+      [...months].sort().reverse().map(m => {
+        const [y,mo] = m.split('-');
+        return `<option value="${m}"${m===curMonth?' selected':''}>${new Date(y,mo-1,1).toLocaleString('en-GB',{month:'long',year:'numeric'})}</option>`;
+      }).join('');
   }
   const smSel = document.getElementById('commissionSalesmanFilter');
   const curSm = smSel.value;
@@ -1771,6 +1775,12 @@ function openCommission() {
   document.getElementById('commissionBg').classList.add('open');
   renderCommission();
   setTimeout(() => { if (document.activeElement) document.activeElement.blur(); }, 50);
+}
+
+function matchesPeriod(inv, month) {
+  const d = inv.invoiceDate || '';
+  if (month === 'YTD') return d.startsWith(new Date().getFullYear().toString());
+  return d.startsWith(month);
 }
 
 function renderCommission() {
@@ -1784,7 +1794,7 @@ function renderCommission() {
 
   const bySm = {};
   state.invoices.filter(inv => {
-    if (!(inv.invoiceDate||'').startsWith(month)) return false;
+    if (!matchesPeriod(inv, month)) return false;
     if (stF==='paid' && computeStatus(inv)!=='paid') return false;
     if (smF && inv.salesman !== smF) return false;
     return true;
@@ -1852,7 +1862,7 @@ function renderCommissionPage() {
 
   const smF = document.getElementById('commissionSalesmanFilter').value;
   const invs = state.invoices.filter(inv => {
-    if (!(inv.invoiceDate||'').startsWith(month)) return false;
+    if (!matchesPeriod(inv, month)) return false;
     if (smF && inv.salesman !== smF) return false;
     return true;
   });

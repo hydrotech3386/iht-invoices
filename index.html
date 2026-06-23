@@ -531,7 +531,7 @@
   <button class="btn-my-adj-req" onclick="openMyAdjRequests()">📅 My Requests</button>
   <button class="btn-all-adj-req" onclick="openAllAdjRequests()">📅 Requests</button>
   <button class="btn-adj-notify" id="adjNotifyBtn" onclick="toggleAdjPendingFilter()" style="display:none">📅 <span id="adjNotifyCount"></span> Date Adj.</button>
-  <button class="btn-usermgmt btn-backup" onclick="openUserMgmt()">👥 Users</button>
+  <button class="btn-usermgmt btn-backup" onclick="openUserMgmt()">👥 Users <span id="devReqBadge" style="display:none;background:#e94560;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
   <button class="btn-backup" onclick="exportBackup()">⬇ Backup</button>
   <button class="btn-backup" onclick="importBackup()" style="background:#6c3483">⬆ Restore</button>
   <button class="btn-backup" onclick="mergeBackup()" style="background:#1a6fa8">⬆ Merge</button>
@@ -1083,7 +1083,7 @@ function onLoggedIn() {
   firebase.database().ref('appSettings').once('value').then(snap => {
     if (snap.val()) Object.assign(appSettings, snap.val());
   });
-  usersRef.once('value').then(snap => { rebuildChatIds(snap.val() || {}); });
+  usersRef.once('value').then(snap => { rebuildChatIds(snap.val() || {}); checkDevReqBadge(); });
   setSyncStatus('syncing');
   fbRef.on('value', snapshot => {
     const fbData = snapshot.val();
@@ -2575,13 +2575,22 @@ function renderUserMgmt() {
     const isSelf = fuid === session.uid;
     const smSel = state.salesmen.map(s => `<option value="${s}"${u.salesman===s?' selected':''}>${s}</option>`).join('');
     const mob = u.linkedMobile, dsk = u.linkedDesktop;
-    const devSlot = (dev, type, key) => dev
-      ? `<div style="margin-bottom:4px">
-           <span style="font-size:11px;color:#4fc3f7;font-weight:600">${type}: ${dev.label||'?'}</span>
-           ${!isSelf ? `<button onclick="removeDeviceLink('${fuid}','${key}')" style="margin-left:6px;font-size:10px;padding:1px 6px;background:#3d0010;border:1px solid #e94560;color:#ff6b6b;border-radius:3px;cursor:pointer">✕</button>` : ''}
-         </div>`
-      : `<div style="font-size:10px;color:#333;margin-bottom:4px">${type}: <span style="font-style:italic">none</span></div>`;
-    const devCell = (mob||dsk) ? devSlot(mob,'📱 Mobile','linkedMobile')+devSlot(dsk,'💻 Desktop','linkedDesktop') : `<span style="color:#333;font-size:11px;font-style:italic">None linked</span>`;
+    const req = u.deviceChangeReq;
+    const devSlot = (dev, type, key) => {
+      const hasPendingReq = req && req.type === key && req.status === 'pending';
+      return dev
+        ? `<div style="margin-bottom:5px">
+             <span style="font-size:11px;color:#4fc3f7;font-weight:600">${type}: ${dev.label||'?'}</span>
+             ${!isSelf ? `<button onclick="removeDeviceLink('${fuid}','${key}')" style="margin-left:4px;font-size:10px;padding:1px 6px;background:#3d0010;border:1px solid #e94560;color:#ff6b6b;border-radius:3px;cursor:pointer">✕</button>` : ''}
+             ${hasPendingReq ? `<div style="margin-top:3px;display:flex;gap:4px;align-items:center">
+               <span style="font-size:10px;color:#f39c12">⚠ Change requested</span>
+               <button onclick="approveDeviceChange('${fuid}','${key}')" style="font-size:10px;padding:1px 6px;background:#1a3a1a;border:1px solid #27ae60;color:#5dfc8d;border-radius:3px;cursor:pointer">✓ Approve</button>
+               <button onclick="rejectDeviceChange('${fuid}')" style="font-size:10px;padding:1px 6px;background:#3d0010;border:1px solid #e94560;color:#ff6b6b;border-radius:3px;cursor:pointer">✕ Reject</button>
+             </div>` : ''}
+           </div>`
+        : `<div style="font-size:10px;color:#333;margin-bottom:5px">${type}: <span style="font-style:italic">none</span></div>`;
+    };
+    const devCell = (mob||dsk) ? devSlot(mob,'📱','linkedMobile')+devSlot(dsk,'💻','linkedDesktop') : `<span style="color:#333;font-size:11px;font-style:italic">None linked</span>`;
     return `<tr>
       <td style="font-weight:600;color:#fff">${u.name||u.username||'—'}${isSelf?' <span class="self-badge">YOU</span>':''}<br><span style="font-size:11px;color:#555;font-weight:400">${u.email||''}</span></td>
       <td>
@@ -2662,6 +2671,33 @@ async function saveUserRole(fuid) {
   renderUserMgmt();
 }
 
+async function approveDeviceChange(fuid, devKey) {
+  const u = usersCache[fuid];
+  if (!confirm(`Approve device change for "${u.name||u.email}"?\nTheir linked ${devKey==='linkedMobile'?'mobile':'desktop'} will be removed and they can link a new one on next login.`)) return;
+  await usersRef.child(fuid).update({ [devKey]: null, deviceChangeReq: null });
+  usersCache[fuid] = { ...usersCache[fuid], [devKey]: null, deviceChangeReq: null };
+  renderUserMgmt();
+  checkDevReqBadge();
+}
+async function rejectDeviceChange(fuid) {
+  const u = usersCache[fuid];
+  const req = u.deviceChangeReq;
+  if (!req) return;
+  await usersRef.child(fuid).update({ deviceChangeReq: { ...req, status: 'rejected' } });
+  usersCache[fuid].deviceChangeReq = { ...req, status: 'rejected' };
+  renderUserMgmt();
+  checkDevReqBadge();
+}
+async function checkDevReqBadge() {
+  if (!session || (session.role !== 'management' && session.role !== 'admin')) return;
+  try {
+    const snap = await usersRef.once('value');
+    const users = snap.val() || {};
+    const count = Object.values(users).filter(u => u.deviceChangeReq && u.deviceChangeReq.status === 'pending').length;
+    const badge = document.getElementById('devReqBadge');
+    if (badge) { badge.style.display = count ? 'inline' : 'none'; badge.textContent = count; }
+  } catch(e) {}
+}
 async function removeDeviceLink(fuid, devKey) {
   const u = usersCache[fuid];
   const typeName = devKey === 'linkedMobile' ? 'mobile' : 'desktop';
@@ -2761,14 +2797,28 @@ async function openProfileModal() {
     { key: 'linkedMobile', label: '📱 Mobile', dev: userData.linkedMobile },
     { key: 'linkedDesktop', label: '💻 Desktop / Laptop', dev: userData.linkedDesktop }
   ];
+  const req = userData.deviceChangeReq;
   const deviceRows = slots.map(s => {
     const isThis = s.dev && s.dev.id === myDeviceId;
-    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #0f3460">
-      <span style="font-size:12px;color:#aaa;min-width:120px">${s.label}</span>
+    const reqPending = req && req.type === s.key && req.status === 'pending';
+    const reqRejected = req && req.type === s.key && req.status === 'rejected';
+    let reqHtml = '';
+    if (s.dev) {
+      if (reqPending) {
+        reqHtml = `<span style="color:#f39c12;font-size:11px;margin-left:auto">⏳ Pending admin approval</span>`;
+      } else if (reqRejected) {
+        reqHtml = `<span style="color:#e94560;font-size:11px;margin-left:auto">✕ Rejected</span>
+          <button onclick="requestDeviceChange('${s.key}')" style="font-size:11px;padding:2px 8px;background:#1a3a1a;border:1px solid #27ae60;color:#5dfc8d;border-radius:4px;cursor:pointer">Re-request</button>`;
+      } else {
+        reqHtml = `<button onclick="requestDeviceChange('${s.key}')" style="margin-left:auto;font-size:11px;padding:2px 8px;background:#1a1a2e;border:1px solid #555;color:#aaa;border-radius:4px;cursor:pointer">Request to change</button>`;
+      }
+    }
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #0f3460;flex-wrap:wrap">
+      <span style="font-size:12px;color:#aaa;min-width:110px">${s.label}</span>
       ${s.dev
         ? `<span style="font-size:13px;color:#4fc3f7;font-weight:600">${s.dev.label||'Device'}</span>
            ${isThis ? '<span style="color:#5dfc8d;font-size:10px">✓ This device</span>' : ''}
-           <button onclick="unlinkMyDevice('${s.key}')" style="margin-left:auto;font-size:11px;padding:3px 10px;background:#3d0010;border:1px solid #e94560;color:#ff6b6b;border-radius:4px;cursor:pointer">✕ Unlink</button>`
+           ${reqHtml}`
         : `<span style="color:#555;font-size:12px;font-style:italic">Not linked</span>`}
     </div>`;
   }).join('');
@@ -2796,14 +2846,17 @@ async function openProfileModal() {
     </p>`;
   setTimeout(() => document.getElementById('myTelegramId')?.focus(), 100);
 }
-async function unlinkMyDevice(devKey) {
-  const typeName = devKey === 'linkedMobile' ? 'mobile' : 'desktop';
-  if (!confirm(`Remove your linked ${typeName}?\nA new ${typeName} device can be linked on the next login from that device.`)) return;
-  await usersRef.child(session.uid).update({ [devKey]: null });
-  openProfileModal();
-}
 function closeProfileModal() {
   document.getElementById('profileBg').classList.remove('open');
+}
+async function requestDeviceChange(devKey) {
+  const typeName = devKey === 'linkedMobile' ? 'mobile' : 'desktop/laptop';
+  if (!confirm(`Request to change your linked ${typeName}?\nAn admin will need to approve before you can link a new device.`)) return;
+  await usersRef.child(session.uid).update({
+    deviceChangeReq: { type: devKey, status: 'pending', requestedAt: Date.now(), name: session.name||session.email }
+  });
+  openProfileModal();
+  checkDevReqBadge();
 }
 async function saveMyTelegram() {
   const chatId = document.getElementById('myTelegramId').value.trim() || null;

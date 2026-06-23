@@ -273,7 +273,9 @@
   .comm-val{color:#5dfc8d;font-weight:700}
   .rate-pill{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700}
   .rate-10{background:#1a3a1a;color:#5dfc8d;border:1px solid #27ae60}
+  .rate-75{background:#1a3020;color:#2ecc71;border:1px solid #27ae60}
   .rate-5{background:#3d2600;color:#f39c12;border:1px solid #e67e22}
+  .rate-3{background:#3d1a00;color:#e67e22;border:1px solid #d35400}
   .rate-1{background:#3d1000;color:#e74c3c;border:1px solid #e94560}
   .grand-comm-box{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding:12px 16px;background:#0f3460;border-radius:8px;border:2px solid #5dfc8d}
 
@@ -1838,9 +1840,18 @@ function renderCommission() {
 }
 
 function commissionRate(days) {
-  if (days <= 30) return 0.10;
-  if (days <= 60) return 0.05;
+  if (days <= 60)  return 0.10;
+  if (days <= 90)  return 0.075;
+  if (days <= 120) return 0.05;
+  if (days <= 180) return 0.03;
   return 0.01;
+}
+function commissionRateLabel(days) {
+  if (days <= 60)  return { pct: '10%',  cls: 'rate-10' };
+  if (days <= 90)  return { pct: '7.5%', cls: 'rate-75' };
+  if (days <= 120) return { pct: '5%',   cls: 'rate-5'  };
+  if (days <= 180) return { pct: '3%',   cls: 'rate-3'  };
+  return               { pct: '1%',   cls: 'rate-1'  };
 }
 
 function daysBetween(d1, d2) {
@@ -1912,8 +1923,7 @@ function renderCommissionPage() {
           const fraction = total > 0 ? p.amount / total : 0;
           const comm = profit * fraction * rate;
           smTotal += comm;
-          const rateCls = days <= 30 ? 'rate-10' : days <= 60 ? 'rate-5' : 'rate-1';
-          const ratePct = days <= 30 ? '10%' : days <= 60 ? '5%' : '1%';
+          const { pct: ratePct, cls: rateCls } = commissionRateLabel(days);
           const ratePill = `<span class="rate-pill ${rateCls}">${ratePct}</span>`;
 
           if (pi === 0) {

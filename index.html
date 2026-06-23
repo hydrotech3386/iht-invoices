@@ -841,6 +841,7 @@
 <script>
 const STORAGE_KEY = 'hydrotech_invoices_v1';
 let session      = null;
+let sessionWatchInterval = null;
 let commentsId   = null;
 let commTab         = 'summary';
 let dateAdjId       = null;
@@ -935,8 +936,12 @@ async function loginAsync() {
     }
     const [fuid, user] = entry;
     if (user.role === 'pending') { errEl.textContent = 'Account pending. Contact admin to activate.'; return; }
+    if (user.role === 'suspended') { errEl.textContent = 'This account has been suspended. Contact admin.'; return; }
     session = { name: user.name||user.username, email: user.email||user.username, role: user.role, salesman: user.salesman||null, uid: fuid, telegramChatId: user.telegramChatId||null };
+    const deviceToken = uid() + uid();
+    await usersRef.child(fuid).update({ activeSession: deviceToken });
     sessionStorage.setItem('iht_session', JSON.stringify(session));
+    sessionStorage.setItem('iht_device_token', deviceToken);
     document.getElementById('authOverlay').classList.remove('open');
     onLoggedIn();
   } catch(err) { errEl.textContent = 'Login error: ' + err.message; console.error(err); }
@@ -966,7 +971,10 @@ async function registerAsync() {
     await usersRef.child(newUid).set({ name, email, passwordHash: hash, role, salesman: null, createdAt: Date.now() });
     if (isFirst) {
       session = { name, email, role: 'admin', salesman: null, uid: newUid };
+      const deviceToken = uid() + uid();
+      await usersRef.child(newUid).update({ activeSession: deviceToken });
       sessionStorage.setItem('iht_session', JSON.stringify(session));
+      sessionStorage.setItem('iht_device_token', deviceToken);
       document.getElementById('authOverlay').classList.remove('open');
       onLoggedIn();
     } else {
@@ -979,9 +987,14 @@ async function registerAsync() {
   } catch(err) { errEl.textContent = 'Registration error: ' + err.message; console.error(err); }
 }
 
-function logout() {
+function logout(reason) {
+  if (sessionWatchInterval) { clearInterval(sessionWatchInterval); sessionWatchInterval = null; }
+  if (session && usersRef && fbReady) {
+    usersRef.child(session.uid).update({ activeSession: null }).catch(() => {});
+  }
   session = null;
   sessionStorage.removeItem('iht_session');
+  sessionStorage.removeItem('iht_device_token');
   document.body.removeAttribute('data-role');
   document.getElementById('userInfo').style.display = 'none';
   if (fbRef) fbRef.off();
@@ -989,6 +1002,11 @@ function logout() {
   showLoginScreen();
   document.getElementById('loginEmail').value = '';
   document.getElementById('loginPass').value = '';
+  if (reason === 'device') {
+    setTimeout(() => {
+      document.getElementById('loginError').textContent = '⚠ Your account was signed in on another device. You have been signed out.';
+    }, 50);
+  }
 }
 
 function applyRoleToUI() {
@@ -1001,9 +1019,25 @@ function applyRoleToUI() {
   document.getElementById('userInfo').style.display = 'flex';
 }
 
+function startSessionWatch() {
+  if (sessionWatchInterval) clearInterval(sessionWatchInterval);
+  const myToken = sessionStorage.getItem('iht_device_token');
+  if (!myToken || !session || !fbReady) return;
+  sessionWatchInterval = setInterval(async () => {
+    if (!fbReady || !usersRef || !session) return;
+    try {
+      const snap = await usersRef.child(session.uid).child('activeSession').once('value');
+      if (snap.val() !== myToken) {
+        logout('device');
+      }
+    } catch(e) {}
+  }, 30000);
+}
+
 function onLoggedIn() {
   applyRoleToUI();
   initSummaryCollapse();
+  startSessionWatch();
   renderSalesmanFilter(); renderMonthFilter(); renderSummary(); renderList();
   setupBackToTop();
   if (!fbReady) return;
@@ -2878,13 +2912,25 @@ function init() {
 
   if (!fbReady) { showLoginScreen(); return; }
   setSyncStatus('syncing');
-  firebase.auth().signInAnonymously().then(() => {
+  firebase.auth().signInAnonymously().then(async () => {
     setSyncStatus('synced');
     const saved = sessionStorage.getItem('iht_session');
-    if (saved) {
+    const deviceToken = sessionStorage.getItem('iht_device_token');
+    if (saved && deviceToken) {
       try {
-        session = JSON.parse(saved);
-        onLoggedIn();
+        const parsed = JSON.parse(saved);
+        const snap = await usersRef.child(parsed.uid).child('activeSession').once('value');
+        if (snap.val() === deviceToken) {
+          session = parsed;
+          onLoggedIn();
+          return;
+        }
+        sessionStorage.removeItem('iht_session');
+        sessionStorage.removeItem('iht_device_token');
+        showLoginScreen();
+        setTimeout(() => {
+          document.getElementById('loginError').textContent = '⚠ Your account was signed in on another device. Please log in again.';
+        }, 50);
         return;
       } catch(e) { session = null; }
     }

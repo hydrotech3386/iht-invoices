@@ -876,6 +876,60 @@ async function notifyRoles(roles, text) {
   roles.forEach(r => (roleChatIds[r] || []).forEach(id => { if (id !== myId) ids.add(id); }));
   await Promise.all([...ids].map(id => sendTelegramMsg(id, text)));
 }
+async function checkOverdueReminders() {
+  if (!canWrite() || !fbReady) return;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  let changed = false;
+
+  for (const inv of state.invoices) {
+    if (computeStatus(inv) === 'paid') continue;
+    if (!inv.invoiceDate || !inv.salesman) continue;
+    const chatId = salesmanChatIds[inv.salesman];
+    if (!chatId) continue;
+
+    const issued = new Date(inv.invoiceDate + 'T00:00:00');
+    const daysOld = Math.floor((today - issued) / 86400000);
+    if (daysOld < 30) continue;
+
+    // Schedule: every 14 days from day 30; switch to every 30 days after day 180
+    let triggerDay;
+    if (daysOld <= 180) {
+      triggerDay = 30 + Math.floor((daysOld - 30) / 14) * 14;
+    } else {
+      triggerDay = 180 + Math.floor((daysOld - 180) / 30) * 30;
+    }
+    const lastSentDays = (inv.overdueReminder && inv.overdueReminder.lastSentDays) || 0;
+    if (lastSentDays >= triggerDay) continue;
+
+    const tp = totalPayable(inv);
+    const paid = amountPaid(inv);
+    const balance = Math.max(0, tp - paid);
+    const statusText = paid > 0
+      ? `Partial payment — Balance: <b>${fmtRM(balance)}</b>`
+      : `No payment received`;
+    const msg =
+      `⏰ <b>Overdue Invoice Reminder</b>\n\n` +
+      `Invoice: <b>${inv.invoiceNo||'—'}</b>\n` +
+      `Customer: ${inv.customer||'—'}\n` +
+      `Amount: ${fmtRM(tp)}\n` +
+      `${statusText}\n` +
+      `Outstanding: <b>${daysOld} days</b>\n` +
+      `Invoice Date: ${fmtDate(inv.invoiceDate)}`;
+    sendTelegramMsg(chatId, msg);
+
+    if (!inv.overdueReminder) inv.overdueReminder = {};
+    inv.overdueReminder.lastSentDays = triggerDay;
+    inv.overdueReminder.lastSentAt = Date.now();
+    changed = true;
+  }
+
+  if (changed) {
+    state.lastModified = Date.now();
+    const toSave = JSON.parse(JSON.stringify(state));
+    fbRef.set(toSave).catch(e => console.warn('overdue reminder save:', e));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+  }
+}
 async function checkMonthlyBackupReminder() {
   if (!session || session.role !== 'management') return;
   const today = new Date();
@@ -1135,6 +1189,8 @@ function onLoggedIn() {
     rebuildChatIds(snap.val() || {});
     checkDevReqBadge();
     checkMonthlyBackupReminder();
+    // Delay slightly so Firebase invoice data is loaded before checking overdue
+    if (canWrite()) setTimeout(checkOverdueReminders, 1500);
   });
   setSyncStatus('syncing');
   fbRef.on('value', snapshot => {
@@ -1725,10 +1781,19 @@ function saveInvoice() {
   closeInvoiceModal();
   persistState(); renderSummary(); renderList();
   // Notify admin
+  const invAmt = fmtRM((data.amount||0) + (data.sst||0));
   const notifMsg = isNew
-    ? `📄 <b>New Invoice Added</b>\n\nInvoice: <b>${data.invoiceNo}</b>\nCustomer: ${data.customer}\nAmount: <b>${fmtRM((data.amount||0)+(data.sst||0))}</b>\nAgent: ${data.salesman||'—'}\nBy: ${session.name||session.email}`
-    : `✏ <b>Invoice Edited</b>\n\nInvoice: <b>${data.invoiceNo}</b>\nCustomer: ${data.customer}\nAmount: <b>${fmtRM((data.amount||0)+(data.sst||0))}</b>\nBy: ${session.name||session.email}`;
+    ? `📄 <b>New Invoice Added</b>\n\nInvoice: <b>${data.invoiceNo}</b>\nCustomer: ${data.customer}\nAmount: <b>${invAmt}</b>\nAgent: ${data.salesman||'—'}\nBy: ${session.name||session.email}`
+    : `✏ <b>Invoice Updated</b>\n\nInvoice: <b>${data.invoiceNo}</b>\nCustomer: ${data.customer}\nAmount: <b>${invAmt}</b>\nBy: ${session.name||session.email}`;
   notifyRoles(['admin'], notifMsg);
+  // Notify salesman
+  const smChatId = salesmanChatIds[data.salesman];
+  if (smChatId) {
+    const smMsg = isNew
+      ? `📄 <b>New Invoice</b>\n\nInvoice: <b>${data.invoiceNo}</b>\nCustomer: ${data.customer}\nAmount: <b>${invAmt}</b>\nDate: ${fmtDate(data.invoiceDate)}`
+      : `✏ <b>Invoice Updated</b>\n\nInvoice: <b>${data.invoiceNo}</b>\nCustomer: ${data.customer}\nAmount: <b>${invAmt}</b>`;
+    sendTelegramMsg(smChatId, smMsg);
+  }
 }
 function deleteInvoice(id) {
   if (!confirm('Delete this invoice? This cannot be undone.')) return;
@@ -1862,12 +1927,27 @@ function addPayment() {
 function deletePayment(invId, idx) {
   const inv = state.invoices.find(i => i.id===invId);
   if (!inv) return;
-  inv.payments.splice(idx,1);
+  const removedPay = inv.payments[idx];
+  inv.payments.splice(idx, 1);
   const paid = amountPaid(inv);
   if (paid<=0) inv.status='unpaid';
   else if (paid<totalPayable(inv)) inv.status='partial';
   renderPayList(inv);
   persistState(); renderSummary(); renderList();
+  // Notify salesman
+  if (removedPay) {
+    const smChatId = salesmanChatIds[inv.salesman];
+    if (smChatId) {
+      const msg =
+        `🗑 <b>Payment Removed</b>\n\n` +
+        `Invoice: <b>${inv.invoiceNo||'—'}</b>\n` +
+        `Customer: ${inv.customer||'—'}\n` +
+        `Removed Amount: <b>${fmtRM(removedPay.amount)}</b>\n` +
+        `Payment Date: ${fmtDate(removedPay.date)}\n` +
+        `By: ${session.name||session.email}`;
+      sendTelegramMsg(smChatId, msg);
+    }
+  }
 }
 function closePaymentModal() {
   document.getElementById('paymentModalBg').classList.remove('open');

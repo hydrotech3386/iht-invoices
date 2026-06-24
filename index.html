@@ -878,15 +878,18 @@ async function notifyRoles(roles, text) {
 }
 async function checkMonthlyBackupReminder() {
   if (!session || session.role !== 'management') return;
-  const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const today = new Date();
+  if (today.getDate() < 5) return; // wait until the 5th
+  const currentMonth = today.toISOString().slice(0, 7); // YYYY-MM
   // Fresh read from Firebase to avoid race if multiple management accounts log in
   const snap = await firebase.database().ref('appSettings/lastBackupReminder').once('value');
   if (snap.val() === currentMonth) return;
   await firebase.database().ref('appSettings').update({ lastBackupReminder: currentMonth });
   appSettings.lastBackupReminder = currentMonth;
+  const monthLabel = today.toLocaleString('en-MY', { month: 'long', year: 'numeric' });
   const msg =
     `🔔 <b>Monthly Backup Reminder</b>\n\n` +
-    `It's a new month — please remember to download a backup of the Invoice Tracker data.\n\n` +
+    `Please download a backup of the Invoice Tracker data for <b>${monthLabel}</b>.\n\n` +
     `Tap <b>⬇ Backup</b> in the app to save a copy.`;
   await notifyRoles(['management'], msg);
   // Also notify the current management user (notifyRoles excludes self)

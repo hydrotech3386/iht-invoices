@@ -182,6 +182,25 @@
   @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
   .shake{animation:shake .35s ease}
 
+  /* Notification Center */
+  .btn-notif{background:#1a2a4a;border:1px solid #0f3460;color:#eee;position:relative;padding:7px 12px}
+  .btn-notif:hover{background:#0f3460}
+  .notif-badge{position:absolute;top:-6px;right:-6px;background:#e94560;color:#fff;border-radius:10px;min-width:18px;height:18px;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;pointer-events:none}
+  .notif-panel{display:flex;flex-direction:column;max-height:82vh;width:100%;max-width:480px}
+  .notif-panel-hd{display:flex;align-items:center;justify-content:space-between;padding-bottom:12px;border-bottom:1px solid #0f3460;flex-shrink:0}
+  .notif-panel-hd h2{margin:0;font-size:16px}
+  .notif-panel-hd .hd-actions{display:flex;gap:8px}
+  .notif-list{overflow-y:auto;flex:1;padding:4px 0}
+  .notif-item{padding:12px 14px;border-bottom:1px solid #0a1628;cursor:default;position:relative;transition:background .15s}
+  .notif-item:hover{background:#111d3a}
+  .notif-item.unread{border-left:3px solid #e67e22}
+  .notif-item:not(.unread){border-left:3px solid transparent}
+  .notif-text{font-size:13px;color:#ccc;line-height:1.5}
+  .notif-time{font-size:11px;color:#555;margin-top:5px}
+  .notif-empty{text-align:center;color:#555;padding:32px 0;font-size:14px}
+  .notif-markread{background:none;border:1px solid #0f3460;border-radius:6px;color:#aaa;font-size:12px;padding:4px 10px;cursor:pointer}
+  .notif-markread:hover{background:#0f3460;color:#fff}
+
   /* Role-based visibility */
   body:not([data-role="account"]) .btn-add { display:none }
   body:not([data-role="account"]) #scanInvoiceBtn { display:none !important }
@@ -535,6 +554,9 @@
   <button class="btn-backup" onclick="exportBackup()">⬇ Backup</button>
   <button class="btn-backup" onclick="importBackup()" style="background:#6c3483">⬆ Restore</button>
   <button class="btn-backup" onclick="mergeBackup()" style="background:#1a6fa8">⬆ Merge</button>
+  <button class="btn-notif" id="notifBtn" onclick="openNotifCenter()" title="Notification Centre">
+    🔔 <span class="notif-badge" id="notifBadge" style="display:none"></span>
+  </button>
 </div>
 
 <div class="inv-table-wrap" id="invoiceList"></div>
@@ -680,6 +702,22 @@
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="document.getElementById('costViewBg').classList.remove('open')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Notification Centre Modal -->
+<div class="modal-bg" id="notifCenterBg" onclick="if(event.target===this)closeNotifCenter()">
+  <div class="modal notif-panel">
+    <div class="notif-panel-hd">
+      <h2>🔔 Notification Centre</h2>
+      <div class="hd-actions">
+        <button class="notif-markread" onclick="markAllNotifsRead()">Mark all read</button>
+        <button class="btn-cancel" style="padding:4px 10px;font-size:13px" onclick="closeNotifCenter()">✕</button>
+      </div>
+    </div>
+    <div class="notif-list" id="notifList">
+      <div class="notif-empty">Loading…</div>
     </div>
   </div>
 </div>
@@ -849,6 +887,9 @@ let adjPendingFilter = false;
 let appSettings  = {};            // { telegramBotToken, claudeApiKey }
 let salesmanChatIds = {};         // { salesmanName: chatId }
 let roleChatIds    = {};         // { role: [chatId, ...] }
+let lastNotifRead  = 0;          // timestamp of last notification the user read
+let notifSubRef    = null;       // Firebase listener for badge
+let cachedNotifs   = [];         // last 50 notifications from Firebase
 
 function canWrite()    { return session && (session.role==='management' || session.role==='admin' || session.role==='account'); }
 function canEdit()     { return session && session.role==='account'; }
@@ -876,6 +917,75 @@ async function notifyRoles(roles, text) {
   roles.forEach(r => (roleChatIds[r] || []).forEach(id => { if (id !== myId) ids.add(id); }));
   await Promise.all([...ids].map(id => sendTelegramMsg(id, text)));
 }
+// ---- Notification Centre ----
+function logNotification(text, { roles = [], salesman = null } = {}) {
+  if (!fbReady) return;
+  const entry = { text, timestamp: Date.now() };
+  if (roles.length) entry.targetRoles = roles;
+  if (salesman) entry.targetSalesman = salesman;
+  firebase.database().ref('notificationLog').push(entry).catch(() => {});
+}
+function isNotifForMe(n) {
+  if (!session) return false;
+  if (n.targetRoles && n.targetRoles.includes(session.role)) return true;
+  if (n.targetSalesman && session.role === 'salesman' && n.targetSalesman === session.salesman) return true;
+  return false;
+}
+function updateNotifBadge() {
+  const unread = cachedNotifs.filter(n => n.timestamp > lastNotifRead && isNotifForMe(n)).length;
+  const badge = document.getElementById('notifBadge');
+  if (!badge) return;
+  badge.textContent = unread > 99 ? '99+' : String(unread);
+  badge.style.display = unread > 0 ? '' : 'none';
+}
+function subscribeNotifBadge() {
+  if (notifSubRef) { notifSubRef.off(); notifSubRef = null; }
+  notifSubRef = firebase.database().ref('notificationLog').orderByChild('timestamp').limitToLast(50);
+  notifSubRef.on('value', snap => {
+    cachedNotifs = [];
+    snap.forEach(child => cachedNotifs.push(child.val()));
+    updateNotifBadge();
+  });
+}
+function renderNotifText(raw) {
+  // Escape HTML from user content, then re-allow only <b> tags we add
+  return raw
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>')
+    .replace(/&lt;b&gt;/g, '<b>').replace(/&lt;\/b&gt;/g, '</b>');
+}
+async function openNotifCenter() {
+  document.getElementById('notifCenterBg').classList.add('open');
+  const listEl = document.getElementById('notifList');
+  listEl.innerHTML = '<div class="notif-empty">Loading…</div>';
+  const snap = await firebase.database().ref('notificationLog').orderByChild('timestamp').limitToLast(50).once('value');
+  const notifs = [];
+  snap.forEach(child => { const n = child.val(); if (isNotifForMe(n)) notifs.push(n); });
+  notifs.sort((a, b) => b.timestamp - a.timestamp);
+  if (!notifs.length) {
+    listEl.innerHTML = '<div class="notif-empty">No notifications yet.</div>';
+  } else {
+    listEl.innerHTML = notifs.map(n => {
+      const isUnread = n.timestamp > lastNotifRead;
+      const time = new Date(n.timestamp).toLocaleString('en-MY', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      return `<div class="notif-item${isUnread ? ' unread' : ''}">
+        <div class="notif-text">${renderNotifText(n.text)}</div>
+        <div class="notif-time">${time}</div>
+      </div>`;
+    }).join('');
+  }
+  markAllNotifsRead();
+}
+function closeNotifCenter() {
+  document.getElementById('notifCenterBg').classList.remove('open');
+}
+async function markAllNotifsRead() {
+  if (!session || !fbReady) return;
+  lastNotifRead = Date.now();
+  usersRef.child(session.uid).update({ lastNotifRead }).catch(() => {});
+  updateNotifBadge();
+}
+
 async function checkOverdueReminders() {
   if (!canWrite() || !fbReady) return;
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -916,6 +1026,7 @@ async function checkOverdueReminders() {
       `Outstanding: <b>${daysOld} days</b>\n` +
       `Invoice Date: ${fmtDate(inv.invoiceDate)}`;
     sendTelegramMsg(chatId, msg);
+    logNotification(msg, { salesman: inv.salesman });
 
     if (!inv.overdueReminder) inv.overdueReminder = {};
     inv.overdueReminder.lastSentDays = triggerDay;
@@ -946,8 +1057,8 @@ async function checkMonthlyBackupReminder() {
     `Please download a backup of the Invoice Tracker data for <b>${monthLabel}</b>.\n\n` +
     `Tap <b>⬇ Backup</b> in the app to save a copy.`;
   await notifyRoles(['management'], msg);
-  // Also notify the current management user (notifyRoles excludes self)
   if (session.telegramChatId) sendTelegramMsg(String(session.telegramChatId), msg);
+  logNotification(msg, { roles: ['management'] });
 }
 async function sendTelegramMsg(chatId, text) {
   const token = appSettings.telegramBotToken;
@@ -1138,6 +1249,8 @@ function logout(reason) {
   document.body.removeAttribute('data-role');
   document.getElementById('userInfo').style.display = 'none';
   if (fbRef) fbRef.off();
+  if (notifSubRef) { notifSubRef.off(); notifSubRef = null; }
+  cachedNotifs = []; lastNotifRead = 0;
   setSyncStatus('offline');
   showLoginScreen();
   document.getElementById('loginEmail').value = '';
@@ -1184,6 +1297,11 @@ function onLoggedIn() {
   // Load Telegram settings and chat ID map
   firebase.database().ref('appSettings').once('value').then(snap => {
     if (snap.val()) Object.assign(appSettings, snap.val());
+  });
+  // Load lastNotifRead then subscribe badge
+  usersRef.child(session.uid).child('lastNotifRead').once('value').then(snap => {
+    lastNotifRead = snap.val() || 0;
+    subscribeNotifBadge();
   });
   usersRef.once('value').then(snap => {
     rebuildChatIds(snap.val() || {});
@@ -1786,14 +1904,14 @@ function saveInvoice() {
     ? `📄 <b>New Invoice Added</b>\n\nInvoice: <b>${data.invoiceNo}</b>\nCustomer: ${data.customer}\nAmount: <b>${invAmt}</b>\nAgent: ${data.salesman||'—'}\nBy: ${session.name||session.email}`
     : `✏ <b>Invoice Updated</b>\n\nInvoice: <b>${data.invoiceNo}</b>\nCustomer: ${data.customer}\nAmount: <b>${invAmt}</b>\nBy: ${session.name||session.email}`;
   notifyRoles(['admin'], notifMsg);
+  logNotification(notifMsg, { roles: ['admin'] });
   // Notify salesman
   const smChatId = salesmanChatIds[data.salesman];
-  if (smChatId) {
-    const smMsg = isNew
-      ? `📄 <b>New Invoice</b>\n\nInvoice: <b>${data.invoiceNo}</b>\nCustomer: ${data.customer}\nAmount: <b>${invAmt}</b>\nDate: ${fmtDate(data.invoiceDate)}`
-      : `✏ <b>Invoice Updated</b>\n\nInvoice: <b>${data.invoiceNo}</b>\nCustomer: ${data.customer}\nAmount: <b>${invAmt}</b>`;
-    sendTelegramMsg(smChatId, smMsg);
-  }
+  const smMsg = isNew
+    ? `📄 <b>New Invoice</b>\n\nInvoice: <b>${data.invoiceNo}</b>\nCustomer: ${data.customer}\nAmount: <b>${invAmt}</b>\nDate: ${fmtDate(data.invoiceDate)}`
+    : `✏ <b>Invoice Updated</b>\n\nInvoice: <b>${data.invoiceNo}</b>\nCustomer: ${data.customer}\nAmount: <b>${invAmt}</b>`;
+  if (smChatId) sendTelegramMsg(smChatId, smMsg);
+  logNotification(smMsg, { salesman: data.salesman });
 }
 function deleteInvoice(id) {
   if (!confirm('Delete this invoice? This cannot be undone.')) return;
@@ -1923,6 +2041,7 @@ function addPayment() {
   const smChatId = salesmanChatIds[inv.salesman];
   if (smChatId) sendTelegramMsg(smChatId, payMsg);
   notifyRoles(['admin', 'account'], payMsg);
+  logNotification(payMsg, { roles: ['admin', 'account'], salesman: inv.salesman });
 }
 function deletePayment(invId, idx) {
   const inv = state.invoices.find(i => i.id===invId);
@@ -1937,16 +2056,15 @@ function deletePayment(invId, idx) {
   // Notify salesman
   if (removedPay) {
     const smChatId = salesmanChatIds[inv.salesman];
-    if (smChatId) {
-      const msg =
-        `🗑 <b>Payment Removed</b>\n\n` +
-        `Invoice: <b>${inv.invoiceNo||'—'}</b>\n` +
-        `Customer: ${inv.customer||'—'}\n` +
-        `Removed Amount: <b>${fmtRM(removedPay.amount)}</b>\n` +
-        `Payment Date: ${fmtDate(removedPay.date)}\n` +
-        `By: ${session.name||session.email}`;
-      sendTelegramMsg(smChatId, msg);
-    }
+    const delMsg =
+      `🗑 <b>Payment Removed</b>\n\n` +
+      `Invoice: <b>${inv.invoiceNo||'—'}</b>\n` +
+      `Customer: ${inv.customer||'—'}\n` +
+      `Removed Amount: <b>${fmtRM(removedPay.amount)}</b>\n` +
+      `Payment Date: ${fmtDate(removedPay.date)}\n` +
+      `By: ${session.name||session.email}`;
+    if (smChatId) sendTelegramMsg(smChatId, delMsg);
+    logNotification(delMsg, { roles: ['admin', 'account'], salesman: inv.salesman });
   }
 }
 function closePaymentModal() {
@@ -2595,6 +2713,7 @@ async function submitDateAdjRequest() {
       ? `📅 <b>Date Adj Request Updated</b>\n\nInvoice: <b>${inv.invoiceNo||'—'}</b>\nCustomer: ${inv.customer||'—'}\nRequested Date: ${requestedDate}\nBy: ${session.name||session.email}\nReason: ${reason}`
       : `📅 <b>New Date Adj Request</b>\n\nInvoice: <b>${inv.invoiceNo||'—'}</b>\nCustomer: ${inv.customer||'—'}\nRequested Date: ${requestedDate}\nBy: ${session.name||session.email}\nReason: ${reason}`;
     notifyRoles(['management'], adjMsg);
+    logNotification(adjMsg, { roles: ['management'] });
   } catch(e) {
     alert('Upload failed: ' + e.message);
   } finally {
@@ -3183,6 +3302,7 @@ function addComment() {
   // Notify all roles (management, admin, account)
   const cmtMsg = `💬 <b>New Comment</b>\n\nInvoice: <b>${inv.invoiceNo||'—'}</b>\nCustomer: ${inv.customer||'—'}\nBy: ${session.name||session.email} (${session.role})\n\n"${text}"`;
   notifyRoles(['management', 'admin', 'account'], cmtMsg);
+  logNotification(cmtMsg, { roles: ['management', 'admin', 'account'] });
 }
 
 // ---- Init ----

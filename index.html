@@ -1077,6 +1077,16 @@ async function saveBotToken() {
   await firebase.database().ref('appSettings').update({ telegramBotToken: token || null });
   alert('Bot token saved.');
 }
+async function testTelegramNotif(btn) {
+  if (!appSettings.telegramBotToken) { alert('Save a bot token first.'); return; }
+  const ids = roleChatIds['management'] || [];
+  if (!ids.length) { alert('No management users have a Telegram Chat ID configured.'); return; }
+  btn.disabled = true; btn.textContent = 'Sending…';
+  const msg = `✅ <b>Test Notification</b>\n\nTelegram notifications are working correctly.\n\nSent by: ${session.name||session.email}`;
+  await Promise.all(ids.map(id => sendTelegramMsg(id, msg)));
+  btn.disabled = false; btn.textContent = '📨 Test';
+  alert(`Test notification sent to ${ids.length} management user(s).`);
+}
 
 // ---- Device binding ----
 function getDeviceId() {
@@ -2887,6 +2897,7 @@ function renderUserMgmt() {
           value="${appSettings.telegramBotToken||''}"
           style="flex:1;min-width:180px;background:#1a1a2e;border:1px solid #333;color:#fff;border-radius:6px;padding:7px 10px;font-size:13px">
         <button onclick="saveBotToken()" style="background:#27ae60;border:none;color:#fff;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap">Save Token</button>
+        <button onclick="testTelegramNotif(this)" style="background:#1a6fa8;border:none;color:#fff;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap">📨 Test</button>
       </div>
     </div>
     <div style="margin-bottom:16px;padding:12px;background:#0f3460;border-radius:8px;border:1px solid #1a3a5c">

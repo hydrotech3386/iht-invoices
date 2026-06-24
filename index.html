@@ -2921,6 +2921,7 @@ async function activateUser(fuid) {
   await usersRef.child(fuid).update({ role, salesman: salesman||null });
   rebuildChatIds(usersCache);
   renderUserMgmt();
+  checkDevReqBadge();
 }
 
 async function saveUserRole(fuid) {
@@ -2932,6 +2933,7 @@ async function saveUserRole(fuid) {
   await usersRef.child(fuid).update({ role, salesman: salesman||null });
   rebuildChatIds(usersCache);
   renderUserMgmt();
+  checkDevReqBadge();
 }
 
 async function approveDeviceChange(fuid, devKey) {
@@ -2956,7 +2958,9 @@ async function checkDevReqBadge() {
   try {
     const snap = await usersRef.once('value');
     const users = snap.val() || {};
-    const count = Object.values(users).filter(u => u.deviceChangeReq && u.deviceChangeReq.status === 'pending').length;
+    const devCount = Object.values(users).filter(u => u.deviceChangeReq && u.deviceChangeReq.status === 'pending').length;
+    const regCount = Object.values(users).filter(u => u.role === 'pending').length;
+    const count = devCount + regCount;
     const badge = document.getElementById('devReqBadge');
     if (badge) { badge.style.display = count ? 'inline' : 'none'; badge.textContent = count; }
   } catch(e) {}

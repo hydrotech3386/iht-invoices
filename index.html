@@ -876,6 +876,22 @@ async function notifyRoles(roles, text) {
   roles.forEach(r => (roleChatIds[r] || []).forEach(id => { if (id !== myId) ids.add(id); }));
   await Promise.all([...ids].map(id => sendTelegramMsg(id, text)));
 }
+async function checkMonthlyBackupReminder() {
+  if (!session || session.role !== 'management') return;
+  const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+  // Fresh read from Firebase to avoid race if multiple management accounts log in
+  const snap = await firebase.database().ref('appSettings/lastBackupReminder').once('value');
+  if (snap.val() === currentMonth) return;
+  await firebase.database().ref('appSettings').update({ lastBackupReminder: currentMonth });
+  appSettings.lastBackupReminder = currentMonth;
+  const msg =
+    `🔔 <b>Monthly Backup Reminder</b>\n\n` +
+    `It's a new month — please remember to download a backup of the Invoice Tracker data.\n\n` +
+    `Tap <b>⬇ Backup</b> in the app to save a copy.`;
+  await notifyRoles(['management'], msg);
+  // Also notify the current management user (notifyRoles excludes self)
+  if (session.telegramChatId) sendTelegramMsg(String(session.telegramChatId), msg);
+}
 async function sendTelegramMsg(chatId, text) {
   const token = appSettings.telegramBotToken;
   if (!token || !chatId) return;
@@ -1112,7 +1128,11 @@ function onLoggedIn() {
   firebase.database().ref('appSettings').once('value').then(snap => {
     if (snap.val()) Object.assign(appSettings, snap.val());
   });
-  usersRef.once('value').then(snap => { rebuildChatIds(snap.val() || {}); checkDevReqBadge(); });
+  usersRef.once('value').then(snap => {
+    rebuildChatIds(snap.val() || {});
+    checkDevReqBadge();
+    checkMonthlyBackupReminder();
+  });
   setSyncStatus('syncing');
   fbRef.on('value', snapshot => {
     const fbData = snapshot.val();

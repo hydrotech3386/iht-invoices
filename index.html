@@ -848,18 +848,33 @@ let dateAdjId       = null;
 let adjPendingFilter = false;
 let appSettings  = {};            // { telegramBotToken, claudeApiKey }
 let salesmanChatIds = {};         // { salesmanName: chatId }
+let roleChatIds    = {};         // { role: [chatId, ...] }
 
-function canWrite() { return session && (session.role==='management' || session.role==='admin' || session.role==='account'); }
-function canEdit()  { return session && session.role==='account'; }
-function canPay()   { return session && (session.role==='admin' || session.role==='account'); }
-function canCost()  { return session && (session.role==='admin' || session.role==='management'); }
+function canWrite()    { return session && (session.role==='management' || session.role==='admin' || session.role==='account'); }
+function canEdit()     { return session && session.role==='account'; }
+function canPay()      { return session && (session.role==='admin' || session.role==='account'); }
+function canEditCost() { return session && session.role==='admin'; }
+function canViewCost() { return session && (session.role==='admin' || session.role==='management'); }
+function canCost()     { return canEditCost(); } // kept for any remaining refs
 
 // ---- Telegram ----
 function rebuildChatIds(users) {
   salesmanChatIds = {};
+  roleChatIds = {};
   Object.values(users).forEach(u => {
     if (u.salesman && u.telegramChatId) salesmanChatIds[u.salesman] = String(u.telegramChatId);
+    if (u.telegramChatId && u.role && u.role !== 'pending' && u.role !== 'suspended') {
+      if (!roleChatIds[u.role]) roleChatIds[u.role] = [];
+      roleChatIds[u.role].push(String(u.telegramChatId));
+    }
   });
+}
+async function notifyRoles(roles, text) {
+  const ids = new Set();
+  // Exclude the current user so they don't notify themselves
+  const myId = session && session.telegramChatId ? String(session.telegramChatId) : null;
+  roles.forEach(r => (roleChatIds[r] || []).forEach(id => { if (id !== myId) ids.add(id); }));
+  await Promise.all([...ids].map(id => sendTelegramMsg(id, text)));
 }
 async function sendTelegramMsg(chatId, text) {
   const token = appSettings.telegramBotToken;
@@ -1021,6 +1036,20 @@ async function registerAsync() {
       document.getElementById('regEmail').value = '';
       document.getElementById('regPass').value = '';
       document.getElementById('regConfirm').value = '';
+      // Notify management via Telegram (fetch token directly since not logged in yet)
+      try {
+        const stSnap = await firebase.database().ref('appSettings').once('value');
+        const botToken = (stSnap.val() || {}).telegramBotToken;
+        if (botToken) {
+          const regMsg = `👤 <b>New User Registration</b>\n\nName: ${name}\nEmail: ${email}\nStatus: Pending approval`;
+          Object.values(users).filter(u => u.role === 'management' && u.telegramChatId).forEach(u => {
+            fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chat_id: String(u.telegramChatId), text: regMsg, parse_mode: 'HTML' })
+            }).catch(() => {});
+          });
+        }
+      } catch(e) {}
     }
   } catch(err) { errEl.textContent = 'Registration error: ' + err.message; console.error(err); }
 }
@@ -1404,7 +1433,7 @@ function renderList() {
   const showPay = canPay();
   const showEdit = canEdit();
   const groupByMonth = sort === 'dateDesc' || sort === 'dateAsc';
-  const hasCostCol = canCost() || (session && session.role === 'salesman');
+  const hasCostCol = canViewCost() || (session && session.role === 'salesman');
 
   if (window.innerWidth <= 768) {
     el.innerHTML = buildCardsHTML(items, showPay, showEdit, groupByMonth);
@@ -1461,14 +1490,16 @@ function renderList() {
       : adjReq && adjReq.status==='pending'
         ? `${fmtDate(inv.invoiceDate)}<div style="margin-top:2px"><span class="adj-pending-badge">⏳ ADJ REQ</span></div>`
         : fmtDate(inv.invoiceDate);
-    const showCost = canCost();
+    const showEditCostBtn = canEditCost();
     const tc = totalCost(inv);
-    const showViewCost = !showCost && session && session.role === 'salesman' && tc > 0;
-    const costCell = showCost
+    const showViewCostLink = !showEditCostBtn && (canViewCost() || (session && session.role === 'salesman' && tc > 0));
+    const costCell = showEditCostBtn
       ? `<button class="btn-cost${tc>0?'':' no-cost'}" onclick="openCostModal('${inv.id}')" title="${tc>0?'Cost: '+fmtRM(tc):'No cost entered'}">${tc>0?fmtRM(tc):'✗'}</button>`
-      : showViewCost
+      : showViewCostLink && tc > 0
         ? `<span class="cost-view-link" onclick="openCostView('${inv.id}')" title="View cost breakdown">${fmtRM(tc)}</span>`
-        : `<span style="color:#333">—</span>`;
+        : showViewCostLink
+          ? `<span style="color:#555">—</span>`
+          : `<span style="color:#333">—</span>`;
     const actions =
       (showPay  ? `<button class="btn-rp" onclick="openPaymentModal('${inv.id}')">💰</button>` : '') +
       (showEdit ? `<button class="btn-re" onclick="openInvoiceModal('${inv.id}')">✏</button>` +
@@ -1549,9 +1580,9 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
           : (session && session.role==='management' && inv.adjustedDate)
             ? `<button class="btn-adj-edit" title="Edit or remove date adjustment" onclick="openDateAdjReview('${inv.id}')">📅✎</button>`
             : '';
-    const showCostC = canCost();
+    const showCostC = canEditCost();
     const tcC = totalCost(inv);
-    const showViewCostC = !showCostC && session && session.role === 'salesman' && tcC > 0;
+    const showViewCostC = !showCostC && (canViewCost() || (session && session.role === 'salesman' && tcC > 0));
     const acts = `
       <div class="inv-card-acts">
         ${showPay ? `<button class="btn-rp" onclick="openPaymentModal('${inv.id}')">💰 Payment</button>` : ''}
@@ -1656,7 +1687,7 @@ function saveInvoice() {
       data.id = editingId;
       data.payments = state.invoices[idx].payments||[];
       data.createdAt = state.invoices[idx].createdAt;
-      data.cost = canCost() ? parseAmountField('fCost') : (state.invoices[idx].cost||0);
+      data.cost = canEditCost() ? parseAmountField('fCost') : (state.invoices[idx].cost||0);
       data.costItems = state.invoices[idx].costItems || [];
       state.invoices[idx] = data;
     }
@@ -1664,11 +1695,17 @@ function saveInvoice() {
     data.id = uid();
     data.payments = [];
     data.createdAt = Date.now();
-    if (canCost()) data.cost = parseAmountField('fCost');
+    if (canEditCost()) data.cost = parseAmountField('fCost');
     state.invoices.push(data);
   }
+  const isNew = !editingId;
   closeInvoiceModal();
   persistState(); renderSummary(); renderList();
+  // Notify admin
+  const notifMsg = isNew
+    ? `📄 <b>New Invoice Added</b>\n\nInvoice: <b>${data.invoiceNo}</b>\nCustomer: ${data.customer}\nAmount: <b>${fmtRM((data.amount||0)+(data.sst||0))}</b>\nAgent: ${data.salesman||'—'}\nBy: ${session.name||session.email}`
+    : `✏ <b>Invoice Edited</b>\n\nInvoice: <b>${data.invoiceNo}</b>\nCustomer: ${data.customer}\nAmount: <b>${fmtRM((data.amount||0)+(data.sst||0))}</b>\nBy: ${session.name||session.email}`;
+  notifyRoles(['admin'], notifMsg);
 }
 function deleteInvoice(id) {
   if (!confirm('Delete this invoice? This cannot be undone.')) return;
@@ -1784,21 +1821,20 @@ function addPayment() {
   document.getElementById('fPayNote').value='';
   renderPayList(inv);
   persistState(); renderSummary(); renderList();
-  // Telegram notification to salesman
-  const chatId = salesmanChatIds[inv.salesman];
-  if (chatId) {
-    const bal = Math.max(0, tp - paid);
-    const msg =
-      `💰 <b>Payment Received</b>\n\n` +
-      `Invoice: <b>${inv.invoiceNo||'—'}</b>\n` +
-      `Customer: ${inv.customer||'—'}\n` +
-      `Payment: <b>${fmtRM(amount)}</b>\n` +
-      (note ? `Note: ${note}\n` : '') +
-      (paid >= tp
-        ? `Status: ✅ <b>Fully Paid</b>`
-        : `Balance Remaining: <b>${fmtRM(bal)}</b>`);
-    sendTelegramMsg(chatId, msg);
-  }
+  // Telegram notifications
+  const bal = Math.max(0, tp - paid);
+  const payMsg =
+    `💰 <b>Payment Recorded</b>\n\n` +
+    `Invoice: <b>${inv.invoiceNo||'—'}</b>\n` +
+    `Customer: ${inv.customer||'—'}\n` +
+    `Agent: ${inv.salesman||'—'}\n` +
+    `Payment: <b>${fmtRM(amount)}</b>\n` +
+    (note ? `Note: ${note}\n` : '') +
+    (paid >= tp ? `Status: ✅ <b>Fully Paid</b>` : `Balance: <b>${fmtRM(bal)}</b>`) +
+    `\nBy: ${session.name||session.email}`;
+  const smChatId = salesmanChatIds[inv.salesman];
+  if (smChatId) sendTelegramMsg(smChatId, payMsg);
+  notifyRoles(['admin', 'account'], payMsg);
 }
 function deletePayment(invId, idx) {
   const inv = state.invoices.find(i => i.id===invId);
@@ -2451,6 +2487,11 @@ async function submitDateAdjRequest() {
     await persistDateAdjReq(dateAdjId);
     renderList();
     closeDateAdjRequest();
+    // Notify management
+    const adjMsg = isEdit
+      ? `📅 <b>Date Adj Request Updated</b>\n\nInvoice: <b>${inv.invoiceNo||'—'}</b>\nCustomer: ${inv.customer||'—'}\nRequested Date: ${requestedDate}\nBy: ${session.name||session.email}\nReason: ${reason}`
+      : `📅 <b>New Date Adj Request</b>\n\nInvoice: <b>${inv.invoiceNo||'—'}</b>\nCustomer: ${inv.customer||'—'}\nRequested Date: ${requestedDate}\nBy: ${session.name||session.email}\nReason: ${reason}`;
+    notifyRoles(['management'], adjMsg);
   } catch(e) {
     alert('Upload failed: ' + e.message);
   } finally {
@@ -2917,7 +2958,7 @@ function openInvoiceDetail(id) {
     </div>`
   ).join('');
 
-  const costHtml = (canCost() || (session && session.role === 'salesman' && hasCost))
+  const costHtml = (canViewCost() || (session && session.role === 'salesman' && hasCost))
     ? `<div class="inv-detail-section">
         <div class="inv-detail-section-label">Cost &amp; Profit</div>
         <div class="inv-detail-amounts">
@@ -3036,6 +3077,9 @@ function addComment() {
     fbRef.set(toSave).then(() => setSyncStatus('synced')).catch(() => setSyncStatus('offline'));
   }
   if (canWrite()) localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+  // Notify all roles (management, admin, account)
+  const cmtMsg = `💬 <b>New Comment</b>\n\nInvoice: <b>${inv.invoiceNo||'—'}</b>\nCustomer: ${inv.customer||'—'}\nBy: ${session.name||session.email} (${session.role})\n\n"${text}"`;
+  notifyRoles(['management', 'admin', 'account'], cmtMsg);
 }
 
 // ---- Init ----

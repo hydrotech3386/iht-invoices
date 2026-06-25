@@ -3255,6 +3255,7 @@ function openInvoiceDetail(id) {
   let actHtml = '';
   if (canPay()) actHtml += `<button class="btn-confirm" onclick="closeInvoiceDetail();openPaymentModal('${id}')">💰 Payment</button>`;
   if (canEdit()) actHtml += `<button class="btn-re" style="padding:9px 14px" onclick="closeInvoiceDetail();openInvoiceModal('${id}')">✏ Edit</button>`;
+  if (canEditCost()) actHtml += `<button class="btn-cost" style="padding:9px 14px;margin-left:0" onclick="closeInvoiceDetail();openCostModal('${id}')">$ Cost</button>`;
   actHtml += `<button class="btn-cmt" style="padding:9px 14px" onclick="closeInvoiceDetail();openCommentsModal('${id}')">💬${cmtCount > 0 ? ' '+cmtCount : ''}</button>`;
   document.getElementById('invDetailActions').innerHTML = actHtml;
 

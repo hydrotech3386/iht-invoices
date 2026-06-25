@@ -1185,7 +1185,11 @@ async function loginAsync() {
     } else {
       await usersRef.child(fuid).update({ [devKey]: { id: deviceId, label: getDeviceLabel(), linkedAt: Date.now() } });
     }
-    session = { name: user.name||user.username, email: user.email||user.username, role: (user.role||'').toLowerCase(), salesman: user.salesman||null, uid: fuid, telegramChatId: user.telegramChatId||null };
+    const normalizedRole = (user.role||'').toLowerCase();
+    if (user.role && user.role !== normalizedRole) {
+      await usersRef.child(fuid).update({ role: normalizedRole });
+    }
+    session = { name: user.name||user.username, email: user.email||user.username, role: normalizedRole, salesman: user.salesman||null, uid: fuid, telegramChatId: user.telegramChatId||null };
     const deviceToken = uid() + uid();
     await usersRef.child(fuid).update({ activeSession: deviceToken });
     sessionStorage.setItem('iht_session', JSON.stringify(session));

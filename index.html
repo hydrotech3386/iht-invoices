@@ -976,10 +976,16 @@ async function openNotifCenter() {
     listEl.innerHTML = notifs.map(n => {
       const isUnread = n.timestamp > lastNotifRead;
       const time = new Date(n.timestamp).toLocaleString('en-MY', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-      const clickable = n.invoiceId ? ` notif-clickable" onclick="closeNotifCenter();openInvoiceDetail('${n.invoiceId}')` : ``;
+      const resolvedId = n.invoiceId || (() => {
+        const m = n.text && n.text.match(/Invoice:\s*<b>(.*?)<\/b>/);
+        if (!m) return null;
+        const found = state.invoices.find(i => i.invoiceNo === m[1]);
+        return found ? found.id : null;
+      })();
+      const clickable = resolvedId ? ` notif-clickable" onclick="closeNotifCenter();openInvoiceDetail('${resolvedId}')` : ``;
       return `<div class="notif-item${isUnread ? ' unread' : ''}${clickable}">
         <div class="notif-text">${renderNotifText(n.text)}</div>
-        <div class="notif-time">${time}${n.invoiceId ? '<span class="notif-goto"> · tap to view invoice →</span>' : ''}</div>
+        <div class="notif-time">${time}${resolvedId ? '<span class="notif-goto"> · tap to view invoice →</span>' : ''}</div>
       </div>`;
     }).join('');
   }

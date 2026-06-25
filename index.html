@@ -1185,7 +1185,7 @@ async function loginAsync() {
     } else {
       await usersRef.child(fuid).update({ [devKey]: { id: deviceId, label: getDeviceLabel(), linkedAt: Date.now() } });
     }
-    session = { name: user.name||user.username, email: user.email||user.username, role: user.role, salesman: user.salesman||null, uid: fuid, telegramChatId: user.telegramChatId||null };
+    session = { name: user.name||user.username, email: user.email||user.username, role: (user.role||'').toLowerCase(), salesman: user.salesman||null, uid: fuid, telegramChatId: user.telegramChatId||null };
     const deviceToken = uid() + uid();
     await usersRef.child(fuid).update({ activeSession: deviceToken });
     sessionStorage.setItem('iht_session', JSON.stringify(session));
@@ -3345,6 +3345,7 @@ function init() {
         const snap = await usersRef.child(parsed.uid).child('activeSession').once('value');
         if (snap.val() === deviceToken) {
           session = parsed;
+          session.role = (session.role || '').toLowerCase();
           onLoggedIn();
           return;
         }

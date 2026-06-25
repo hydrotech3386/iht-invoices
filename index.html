@@ -193,6 +193,9 @@
   .notif-list{overflow-y:auto;flex:1;padding:4px 0}
   .notif-item{padding:12px 14px;border-bottom:1px solid #0a1628;cursor:default;position:relative;transition:background .15s}
   .notif-item:hover{background:#111d3a}
+  .notif-item.notif-clickable{cursor:pointer}
+  .notif-item.notif-clickable:hover{background:#162244}
+  .notif-goto{color:#4a7fd4;font-size:10px}
   .notif-item.unread{border-left:3px solid #e67e22}
   .notif-item:not(.unread){border-left:3px solid transparent}
   .notif-text{font-size:13px;color:#ccc;line-height:1.5}
@@ -919,11 +922,12 @@ async function notifyRoles(roles, text) {
   await Promise.all([...ids].map(id => sendTelegramMsg(id, text)));
 }
 // ---- Notification Centre ----
-function logNotification(text, { roles = [], salesman = null } = {}) {
+function logNotification(text, { roles = [], salesman = null, invoiceId = null } = {}) {
   if (!fbReady) return;
   const entry = { text, timestamp: Date.now() };
   if (roles.length) entry.targetRoles = roles;
   if (salesman) entry.targetSalesman = salesman;
+  if (invoiceId) entry.invoiceId = invoiceId;
   firebase.database().ref('notificationLog').push(entry).catch(() => {});
 }
 function isNotifForMe(n) {
@@ -969,9 +973,10 @@ async function openNotifCenter() {
     listEl.innerHTML = notifs.map(n => {
       const isUnread = n.timestamp > lastNotifRead;
       const time = new Date(n.timestamp).toLocaleString('en-MY', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-      return `<div class="notif-item${isUnread ? ' unread' : ''}">
+      const clickable = n.invoiceId ? ` notif-clickable" onclick="closeNotifCenter();openInvoiceDetail('${n.invoiceId}')` : ``;
+      return `<div class="notif-item${isUnread ? ' unread' : ''}${clickable}">
         <div class="notif-text">${renderNotifText(n.text)}</div>
-        <div class="notif-time">${time}</div>
+        <div class="notif-time">${time}${n.invoiceId ? '<span class="notif-goto"> · tap to view invoice →</span>' : ''}</div>
       </div>`;
     }).join('');
   }
@@ -1027,7 +1032,7 @@ async function checkOverdueReminders() {
       `Outstanding: <b>${daysOld} days</b>\n` +
       `Invoice Date: ${fmtDate(inv.invoiceDate)}`;
     sendTelegramMsg(chatId, msg);
-    logNotification(msg, { salesman: inv.salesman });
+    logNotification(msg, { salesman: inv.salesman, invoiceId: inv.id });
 
     if (!inv.overdueReminder) inv.overdueReminder = {};
     inv.overdueReminder.lastSentDays = triggerDay;
@@ -1919,14 +1924,14 @@ function saveInvoice() {
     ? `📄 <b>New Invoice Added</b>\n\nInvoice: <b>${data.invoiceNo}</b>\nCustomer: ${data.customer}\nAmount: <b>${invAmt}</b>\nAgent: ${data.salesman||'—'}\nBy: ${session.name||session.email}`
     : `✏ <b>Invoice Updated</b>\n\nInvoice: <b>${data.invoiceNo}</b>\nCustomer: ${data.customer}\nAmount: <b>${invAmt}</b>\nBy: ${session.name||session.email}`;
   notifyRoles(['admin'], notifMsg);
-  logNotification(notifMsg, { roles: ['admin'] });
+  logNotification(notifMsg, { roles: ['admin'], invoiceId: data.id });
   // Notify salesman
   const smChatId = salesmanChatIds[data.salesman];
   const smMsg = isNew
     ? `📄 <b>New Invoice</b>\n\nInvoice: <b>${data.invoiceNo}</b>\nCustomer: ${data.customer}\nAmount: <b>${invAmt}</b>\nDate: ${fmtDate(data.invoiceDate)}`
     : `✏ <b>Invoice Updated</b>\n\nInvoice: <b>${data.invoiceNo}</b>\nCustomer: ${data.customer}\nAmount: <b>${invAmt}</b>`;
   if (smChatId) sendTelegramMsg(smChatId, smMsg);
-  logNotification(smMsg, { salesman: data.salesman });
+  logNotification(smMsg, { salesman: data.salesman, invoiceId: data.id });
 }
 function deleteInvoice(id) {
   if (!confirm('Delete this invoice? This cannot be undone.')) return;
@@ -2056,7 +2061,7 @@ function addPayment() {
   const smChatId = salesmanChatIds[inv.salesman];
   if (smChatId) sendTelegramMsg(smChatId, payMsg);
   notifyRoles(['admin', 'account'], payMsg);
-  logNotification(payMsg, { roles: ['admin', 'account'], salesman: inv.salesman });
+  logNotification(payMsg, { roles: ['admin', 'account'], salesman: inv.salesman, invoiceId: inv.id });
 }
 function deletePayment(invId, idx) {
   const inv = state.invoices.find(i => i.id===invId);
@@ -2079,7 +2084,7 @@ function deletePayment(invId, idx) {
       `Payment Date: ${fmtDate(removedPay.date)}\n` +
       `By: ${session.name||session.email}`;
     if (smChatId) sendTelegramMsg(smChatId, delMsg);
-    logNotification(delMsg, { roles: ['admin', 'account'], salesman: inv.salesman });
+    logNotification(delMsg, { roles: ['admin', 'account'], salesman: inv.salesman, invoiceId: inv.id });
   }
 }
 function closePaymentModal() {
@@ -2728,7 +2733,7 @@ async function submitDateAdjRequest() {
       ? `📅 <b>Date Adj Request Updated</b>\n\nInvoice: <b>${inv.invoiceNo||'—'}</b>\nCustomer: ${inv.customer||'—'}\nRequested Date: ${requestedDate}\nBy: ${session.name||session.email}\nReason: ${reason}`
       : `📅 <b>New Date Adj Request</b>\n\nInvoice: <b>${inv.invoiceNo||'—'}</b>\nCustomer: ${inv.customer||'—'}\nRequested Date: ${requestedDate}\nBy: ${session.name||session.email}\nReason: ${reason}`;
     notifyRoles(['management'], adjMsg);
-    logNotification(adjMsg, { roles: ['management'] });
+    logNotification(adjMsg, { roles: ['management'], invoiceId: inv.id });
   } catch(e) {
     alert('Upload failed: ' + e.message);
   } finally {
@@ -3323,7 +3328,7 @@ function addComment() {
   // Notify all roles (management, admin, account)
   const cmtMsg = `💬 <b>New Comment</b>\n\nInvoice: <b>${inv.invoiceNo||'—'}</b>\nCustomer: ${inv.customer||'—'}\nBy: ${session.name||session.email} (${session.role})\n\n"${text}"`;
   notifyRoles(['management', 'admin', 'account'], cmtMsg);
-  logNotification(cmtMsg, { roles: ['management', 'admin', 'account'] });
+  logNotification(cmtMsg, { roles: ['management', 'admin', 'account'], invoiceId: inv.id });
 }
 
 // ---- Init ----

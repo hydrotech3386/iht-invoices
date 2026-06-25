@@ -196,6 +196,8 @@
   .notif-item.notif-clickable{cursor:pointer}
   .notif-item.notif-clickable:hover{background:#162244}
   .notif-goto{color:#4a7fd4;font-size:10px}
+  .btn-rescan-notes{background:#6c3483;color:#fff;border:none;border-radius:6px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;width:100%;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .15s}
+  .btn-rescan-notes:hover{background:#7d3c98}
   .notif-item.unread{border-left:3px solid #e67e22}
   .notif-item:not(.unread){border-left:3px solid transparent}
   .notif-text{font-size:13px;color:#ccc;line-height:1.5}
@@ -638,6 +640,7 @@
     <div class="form-row">
       <label>Notes / Remarks</label>
       <textarea id="fNotes" placeholder="Description of work, item details, etc."></textarea>
+      <button class="btn-rescan-notes" id="rescanNotesBtn" onclick="openRescanNotes()" style="display:none">🔍 Rescan Invoice Image for Notes</button>
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeInvoiceModal()">Cancel</button>
@@ -1842,6 +1845,7 @@ function openInvoiceModal(id) {
   const isAdmin = canCost();
   document.getElementById('costRow').style.display = isAdmin ? '' : 'none';
   document.getElementById('costDivider').style.display = isAdmin ? '' : 'none';
+  document.getElementById('rescanNotesBtn').style.display = (id && session && session.role === 'account') ? '' : 'none';
   if (id) {
     const inv = state.invoices.find(i => i.id===id);
     if (!inv) return;
@@ -3516,12 +3520,89 @@ Use null for any field not found. For amount, return only the final grand total 
   }
 }
 
+function openRescanNotes() {
+  if (!session || session.role !== 'account') return;
+  if (!getClaudeKey()) {
+    alert('Invoice scanner is not set up yet.\n\nContact your admin to configure it.');
+    return;
+  }
+  document.getElementById('rescanNotesFileInput').click();
+}
+
+async function processScanNotesFile(file) {
+  if (!file) return;
+  const key = getClaudeKey();
+  if (!key) return;
+  const objUrl = URL.createObjectURL(file);
+  const prev = document.getElementById('scanPreview');
+  prev.src = objUrl; prev.style.display = 'block';
+  document.getElementById('scanStatusMsg').textContent = 'Reading invoice description...';
+  document.getElementById('scanOverlay').classList.add('open');
+  try {
+    const base64 = await fileToBase64(file);
+    const prompt = `You are reading a Malaysian business invoice or tax invoice image.
+Extract ONLY the description of goods or services from this invoice.
+Return ONLY a valid JSON object, no explanation or markdown:
+{"notes":"description of goods or services listed on the invoice, or null if not found"}
+Be concise but complete. Summarize what items, work or services are invoiced.`;
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 512,
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type: file.type || 'image/jpeg', data: base64 } },
+          { type: 'text', text: prompt }
+        ]}]
+      })
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        localStorage.removeItem(CLAUDE_KEY_STORE);
+        document.getElementById('scanOverlay').classList.remove('open');
+        alert('API key invalid or expired.\n\nPlease contact your admin.');
+        return;
+      }
+      throw new Error((e.error?.message) || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const text = data.content?.[0]?.text || '';
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('AI returned an unexpected response. Try a clearer photo.');
+    const result = JSON.parse(match[0]);
+    document.getElementById('scanOverlay').classList.remove('open');
+    URL.revokeObjectURL(objUrl);
+    if (result.notes) {
+      document.getElementById('fNotes').value = result.notes;
+      const btn = document.getElementById('rescanNotesBtn');
+      btn.textContent = '✓ Notes updated — Review below';
+      btn.style.background = '#27ae60';
+      setTimeout(() => { btn.textContent = '🔍 Rescan Invoice Image for Notes'; btn.style.background = ''; }, 3500);
+    } else {
+      alert('No description found in the image. Try a clearer photo.');
+    }
+  } catch(e) {
+    document.getElementById('scanOverlay').classList.remove('open');
+    URL.revokeObjectURL(objUrl);
+    console.error('Rescan notes error:', e);
+    alert('Could not read invoice.\n\n' + e.message + '\n\nTip: Make sure the photo is clear and well-lit.');
+  }
+}
+
 init();
 </script>
 <button id="backToTop" title="Back to top" onclick="scrollToTop()">↑</button>
 
 <!-- Hidden file input for invoice scanning -->
 <input type="file" id="scanFileInput" accept="image/*" capture="environment" style="display:none" onchange="processScanFile(this.files[0]);this.value=''">
+<input type="file" id="rescanNotesFileInput" accept="image/*" capture="environment" style="display:none" onchange="processScanNotesFile(this.files[0]);this.value=''">
 
 <!-- Scanning progress overlay -->
 <div class="scan-overlay" id="scanOverlay">

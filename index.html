@@ -1217,10 +1217,7 @@ async function loginAsync() {
   if (!usersRef) { errEl.textContent = 'Not connected. Please refresh the page.'; return; }
   try {
     if (fbReady && !firebase.auth().currentUser) {
-      await Promise.race([
-        firebase.auth().signInAnonymously(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timed out. Check your internet connection.')), 10000))
-      ]).catch(e => { throw e; });
+      await firebase.auth().signInAnonymously().catch(() => {});
     }
     const hash = await sha256(password);
     const snap = await fbWithTimeout(usersRef, 10000);

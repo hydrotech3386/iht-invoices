@@ -901,8 +901,8 @@ let cachedNotifs   = [];         // last 50 notifications from Firebase
 function canWrite()    { return session && (session.role==='management' || session.role==='admin' || session.role==='account'); }
 function canEdit()     { return session && session.role==='account'; }
 function canPay()      { return session && (session.role==='admin' || session.role==='account'); }
-function canEditCost() { return session && session.role==='admin'; }
-function canViewCost() { return session && (session.role==='admin' || session.role==='management'); }
+function canEditCost() { return session && (session.role==='admin' || session.role==='management'); }
+function canViewCost() { return !!session; }
 function canCost()     { return canEditCost(); } // kept for any remaining refs
 
 // ---- Telegram ----
@@ -1661,7 +1661,7 @@ function renderList() {
   const showPay = canPay();
   const showEdit = canEdit();
   const groupByMonth = sort === 'dateDesc' || sort === 'dateAsc';
-  const hasCostCol = canViewCost() || (session && session.role === 'salesman');
+  const hasCostCol = canViewCost();
 
   if (window.innerWidth <= 768) {
     el.innerHTML = buildCardsHTML(items, showPay, showEdit, groupByMonth);
@@ -1720,7 +1720,7 @@ function renderList() {
         : fmtDate(inv.invoiceDate);
     const showEditCostBtn = canEditCost();
     const tc = totalCost(inv);
-    const showViewCostLink = !showEditCostBtn && (canViewCost() || (session && session.role === 'salesman' && tc > 0));
+    const showViewCostLink = !showEditCostBtn && canViewCost();
     const costCell = showEditCostBtn
       ? `<button class="btn-cost${tc>0?'':' no-cost'}" onclick="openCostModal('${inv.id}')" title="${tc>0?'Cost: '+fmtRM(tc):'No cost entered'}">${tc>0?fmtRM(tc):'✗'}</button>`
       : showViewCostLink && tc > 0
@@ -1808,7 +1808,7 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
             : '';
     const showCostC = canEditCost();
     const tcC = totalCost(inv);
-    const showViewCostC = !showCostC && (canViewCost() || (session && session.role === 'salesman' && tcC > 0));
+    const showViewCostC = !showCostC && canViewCost();
     const acts = `
       <div class="inv-card-acts">
         ${showPay ? `<button class="btn-rp" onclick="openPaymentModal('${inv.id}')">💰 Payment</button>` : ''}
@@ -3215,7 +3215,7 @@ function openInvoiceDetail(id) {
     </div>`
   ).join('');
 
-  const costHtml = (canViewCost() || (session && session.role === 'salesman' && hasCost))
+  const costHtml = canViewCost()
     ? `<div class="inv-detail-section">
         <div class="inv-detail-section-label">Cost &amp; Profit</div>
         <div class="inv-detail-amounts">
@@ -3273,6 +3273,7 @@ function openInvoiceDetail(id) {
   if (canPay()) actHtml += `<button class="btn-confirm" onclick="closeInvoiceDetail();openPaymentModal('${id}')">💰 Payment</button>`;
   if (canEdit()) actHtml += `<button class="btn-re" style="padding:9px 14px" onclick="closeInvoiceDetail();openInvoiceModal('${id}')">✏ Edit</button>`;
   if (canEditCost()) actHtml += `<button class="btn-cost" style="padding:9px 14px;margin-left:0" onclick="closeInvoiceDetail();openCostModal('${id}')">$ Cost</button>`;
+  else if (canViewCost()) actHtml += `<button class="btn-cost" style="padding:9px 14px;margin-left:0" onclick="closeInvoiceDetail();openCostView('${id}')">$ View Cost</button>`;
   actHtml += `<button class="btn-cmt" style="padding:9px 14px" onclick="closeInvoiceDetail();openCommentsModal('${id}')">💬${cmtCount > 0 ? ' '+cmtCount : ''}</button>`;
   document.getElementById('invDetailActions').innerHTML = actHtml;
 

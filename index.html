@@ -1395,7 +1395,12 @@ function onLoggedIn() {
     if (canWrite()) setTimeout(checkOverdueReminders, 1500);
   });
   setSyncStatus('syncing');
+  let rtdbConnected = false;
+  const rtdbTimeout = setTimeout(() => {
+    if (!rtdbConnected) setSyncStatus('offline');
+  }, 10000);
   fbRef.on('value', snapshot => {
+    rtdbConnected = true; clearTimeout(rtdbTimeout);
     const fbData = snapshot.val();
     if (fbData) {
       const localTs = state.lastModified||0, fbTs = fbData.lastModified||0;
@@ -1406,7 +1411,7 @@ function onLoggedIn() {
       }
     }
     setSyncStatus('synced');
-  }, () => setSyncStatus('offline'));
+  }, () => { rtdbConnected = true; clearTimeout(rtdbTimeout); setSyncStatus('offline'); });
 }
 
 // ---- State ----

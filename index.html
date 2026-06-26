@@ -72,7 +72,8 @@
   .btn-adj-notify{background:#e67e22;color:#fff;animation:pulse .9s infinite}
   .btn-adj-notify:hover,.btn-adj-notify.active{animation:none;filter:brightness(1.15)}
   .btn-adj-notify.active{background:#c0392b}
-  body:not([data-role="management"]) .btn-adj-notify{display:none!important}
+  body:not([data-role="management"]) #adjNotifyBtn{display:none!important}
+  body:not([data-role="management"]):not([data-role="admin"]) #costRevNotifyBtn{display:none!important}
   .btn-my-adj-req{background:#1a6fa8;color:#fff}
   .btn-my-adj-req:hover{filter:brightness(1.2)}
   .my-adj-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
@@ -216,7 +217,7 @@
   body:not([data-role="salesman"]) .btn-my-adj-req { display:none }
   .btn-all-adj-req{background:#6c3483;color:#fff}
   .btn-all-adj-req:hover{filter:brightness(1.15)}
-  body:not([data-role="management"]) .btn-all-adj-req{display:none}
+  body:not([data-role="management"]):not([data-role="admin"]) .btn-all-adj-req{display:none}
 
   /* User management */
   .user-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
@@ -324,6 +325,10 @@
   .btn-adj-review:hover{filter:brightness(1.2);animation:none}
   .btn-adj-edit{background:#1a6fa8;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;padding:4px 9px;margin-left:3px;color:#fff}
   .btn-adj-edit:hover{filter:brightness(1.2)}
+  .btn-cost-req{background:#8e44ad;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;padding:4px 9px;margin-left:3px;color:#fff}
+  .btn-cost-req:hover{filter:brightness(1.2)}
+  .btn-cost-review{background:#e67e22;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;padding:4px 9px;margin-left:3px;color:#fff;animation:pulse .9s infinite}
+  .btn-cost-review:hover{filter:brightness(1.2);animation:none}
   .btn-cost{background:#1a6fa8;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;padding:4px 9px;margin-left:3px;color:#fff}
   .btn-cost:hover{filter:brightness(1.2)}
   .btn-cost.no-cost{background:#c0392b}
@@ -371,7 +376,7 @@
   .inv-card-acts{display:flex;gap:6px;margin-top:6px}
   .inv-card-acts .btn-rp{flex:2;padding:9px 8px;font-size:13px}
   .inv-card-acts .btn-re,.inv-card-acts .btn-rd{flex:1;padding:9px 8px;font-size:13px}
-  .inv-card-acts .btn-cmt,.inv-card-acts .btn-cost,.inv-card-acts .btn-adj-req,.inv-card-acts .btn-adj-review,.inv-card-acts .btn-adj-edit{flex:1;padding:9px 8px;font-size:13px;margin-left:0}
+  .inv-card-acts .btn-cmt,.inv-card-acts .btn-cost,.inv-card-acts .btn-adj-req,.inv-card-acts .btn-adj-review,.inv-card-acts .btn-adj-edit,.inv-card-acts .btn-cost-req,.inv-card-acts .btn-cost-review{flex:1;padding:9px 8px;font-size:13px;margin-left:0}
   /* Invoice Detail Popup */
   .inv-detail-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:14px}
   .inv-detail-no{font-size:20px;font-weight:700;color:#fff;margin-bottom:3px}
@@ -556,9 +561,10 @@
 <div class="toolbar">
   <button class="btn-add" onclick="openInvoiceModal()">+ Add Invoice</button>
   <button class="btn-commission" onclick="openCommission()">📊 Agent Report</button>
-  <button class="btn-my-adj-req" onclick="openMyAdjRequests()">📅 My Requests</button>
-  <button class="btn-all-adj-req" onclick="openAllAdjRequests()">📅 Requests</button>
+  <button class="btn-my-adj-req" onclick="openMyAdjRequests()">📋 My Requests</button>
+  <button class="btn-all-adj-req" onclick="openAllAdjRequests()">📋 Requests</button>
   <button class="btn-adj-notify" id="adjNotifyBtn" onclick="toggleAdjPendingFilter()" style="display:none">📅 <span id="adjNotifyCount"></span> Date Adj.</button>
+  <button class="btn-adj-notify" id="costRevNotifyBtn" onclick="openAllAdjRequests()" style="display:none">💰 <span id="costRevNotifyCount"></span> Cost Rev.</button>
   <button class="btn-usermgmt btn-backup" onclick="openUserMgmt()">👥 Users <span id="devReqBadge" style="display:none;background:#e94560;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
   <button class="btn-backup" onclick="exportBackup()">⬇ Backup</button>
   <button class="btn-backup" onclick="importBackup()" style="background:#6c3483">⬆ Restore</button>
@@ -807,10 +813,10 @@
   </div>
 </div>
 
-<!-- My Date Adjustment Requests Modal (Salesman) -->
+<!-- My Requests Modal (Salesman) -->
 <div class="modal-bg" id="myAdjRequestsBg">
   <div class="modal" style="max-width:780px">
-    <h2>📅 My Date Adjustment Requests</h2>
+    <h2>📋 My Requests</h2>
     <div id="myAdjRequestsContent"></div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="document.getElementById('myAdjRequestsBg').classList.remove('open')">Close</button>
@@ -818,10 +824,10 @@
   </div>
 </div>
 
-<!-- Date Adjustment All Requests Modal (Admin) -->
+<!-- All Requests Modal (Admin/Management) -->
 <div class="modal-bg" id="allAdjRequestsBg">
   <div class="modal" style="max-width:960px">
-    <h2>📅 Date Adjustment Requests</h2>
+    <h2>📋 All Requests</h2>
     <div id="allAdjRequestsContent"></div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="document.getElementById('allAdjRequestsBg').classList.remove('open')">Close</button>
@@ -883,6 +889,43 @@
   </div>
 </div>
 
+<!-- Cost Review Request Modal (Salesman) -->
+<div class="modal-bg" id="costReviewReqBg">
+  <div class="modal" style="max-width:480px">
+    <h2 id="costReviewReqTitle">💰 Request Cost Review</h2>
+    <div class="adj-info-box" id="costReviewReqInfo"></div>
+    <div class="section-divider">Your Request</div>
+    <div class="form-row">
+      <label>Reason *</label>
+      <textarea id="fCostReviewReason" placeholder="Explain why you want the cost to be reviewed (e.g. cost seems incorrect, item details wrong, etc.)..." style="min-height:90px"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeCostReviewRequest()">Close</button>
+      <button id="btnRemoveCostReview" style="display:none;background:#e94560;border:none;border-radius:6px;padding:8px 18px;cursor:pointer;font-weight:600;font-size:13px;color:#fff" onclick="cancelCostReviewRequest()">Remove Request</button>
+      <button class="btn-confirm" id="btnSubmitCostReview" onclick="submitCostReviewRequest()">Submit Request</button>
+    </div>
+  </div>
+</div>
+
+<!-- Cost Review Management Modal (Admin/Management) -->
+<div class="modal-bg" id="costReviewMgmtBg">
+  <div class="modal" style="max-width:520px">
+    <h2>💰 Review Cost Request</h2>
+    <div class="adj-info-box" id="costReviewMgmtInfo"></div>
+    <div class="section-divider">Cost Breakdown</div>
+    <div id="costReviewMgmtItems"></div>
+    <div class="cost-total-row" style="margin-top:8px">
+      <span>Total Cost</span>
+      <strong id="costReviewMgmtTotal">RM 0.00</strong>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeCostReviewMgmt()">Cancel</button>
+      <button style="background:#e94560;border:none;border-radius:6px;padding:8px 18px;cursor:pointer;font-weight:600;font-size:13px;color:#fff" onclick="rejectCostReview()">Reject</button>
+      <button class="btn-confirm" onclick="markCostReviewDone()">Mark as Reviewed</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const STORAGE_KEY = 'hydrotech_invoices_v1';
 let session      = null;
@@ -890,6 +933,7 @@ let sessionWatchInterval = null;
 let commentsId   = null;
 let commTab         = 'summary';
 let dateAdjId       = null;
+let costReviewId    = null;
 let adjPendingFilter = false;
 let appSettings  = {};            // { telegramBotToken, claudeApiKey }
 let salesmanChatIds = {};         // { salesmanName: chatId }
@@ -1713,6 +1757,17 @@ function renderList() {
           : hasApprovedAdj
             ? `<button class="btn-adj-edit" title="Edit or remove date adjustment" onclick="openDateAdjReview('${inv.id}')">📅✎</button>`
             : '';
+    const crReq = inv.costReviewReq;
+    const canReqCR  = isOwnInv && (!crReq || crReq.status==='rejected');
+    const canEditCR = isOwnInv && crReq && crReq.status==='pending';
+    const hasPendingCR = (session.role==='admin'||session.role==='management') && crReq && crReq.status==='pending';
+    const costRevBtn = canReqCR
+      ? `<button class="btn-cost-req" title="Request cost review" onclick="openCostReviewRequest('${inv.id}')">💰📋</button>`
+      : canEditCR
+        ? `<button class="btn-cost-req" title="Edit your cost review request" onclick="openCostReviewRequest('${inv.id}')">💰✎</button>`
+        : hasPendingCR
+          ? `<button class="btn-cost-review" title="Review cost request" onclick="openCostReviewMgmt('${inv.id}')">💰⚠</button>`
+          : '';
     const dateDisplay = inv.adjustedDate
       ? `${fmtDate(inv.invoiceDate)}<div class="adj-date-box"><span class="adj-badge">ADJ</span>${fmtDate(inv.adjustedDate)}</div>`
       : adjReq && adjReq.status==='pending'
@@ -1733,7 +1788,7 @@ function renderList() {
       (showEdit ? `<button class="btn-re" onclick="openInvoiceModal('${inv.id}')">✏</button>` +
                   `<button class="btn-rd" onclick="deleteInvoice('${inv.id}')">✕</button>` : '') +
       `<button class="btn-cmt" onclick="openCommentsModal('${inv.id}')">💬${cmtCount > 0 ? cmtCount : ''}</button>` +
-      adjBtn;
+      adjBtn + costRevBtn;
 
     rows += `<tr class="${rowCls} inv-clickable" data-inv-id="${inv.id}" onclick="if(!event.target.closest('button,a'))openInvoiceDetail('${inv.id}')">
       <td class="td-date">${dateDisplay}</td>
@@ -1806,6 +1861,14 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
           : (session && session.role==='management' && inv.adjustedDate)
             ? `<button class="btn-adj-edit" title="Edit or remove date adjustment" onclick="openDateAdjReview('${inv.id}')">📅✎</button>`
             : '';
+    const crReqC = inv.costReviewReq;
+    const costRevBtnC = (isOwnInvC && (!crReqC || crReqC.status==='rejected'))
+      ? `<button class="btn-cost-req" onclick="openCostReviewRequest('${inv.id}')">💰📋</button>`
+      : (isOwnInvC && crReqC && crReqC.status==='pending')
+        ? `<button class="btn-cost-req" onclick="openCostReviewRequest('${inv.id}')">💰✎</button>`
+        : ((session.role==='admin'||session.role==='management') && crReqC && crReqC.status==='pending')
+          ? `<button class="btn-cost-review" onclick="openCostReviewMgmt('${inv.id}')">💰⚠</button>`
+          : '';
     const showCostC = canEditCost();
     const tcC = totalCost(inv);
     const showViewCostC = !showCostC && canViewCost();
@@ -1818,6 +1881,7 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
         <button class="btn-rd" onclick="deleteInvoice('${inv.id}')">✕</button>` : ''}
         <button class="btn-cmt" onclick="openCommentsModal('${inv.id}')">💬${cmtCount > 0 ? ' ' + cmtCount : ''}</button>
         ${adjBtnC}
+        ${costRevBtnC}
       </div>`;
 
     html += `<div class="inv-card ${cardCls} inv-clickable" data-inv-id="${inv.id}" onclick="if(!event.target.closest('button,a'))openInvoiceDetail('${inv.id}')">
@@ -2445,7 +2509,8 @@ async function persistDateAdjReq(invId) {
 function openMyAdjRequests() {
   const content = document.getElementById('myAdjRequestsContent');
   const mySm = session && session.salesman;
-  const invs = state.invoices.filter(inv =>
+
+  const adjInvs = state.invoices.filter(inv =>
     inv.salesman === mySm && inv.dateAdjReq
   ).sort((a, b) => {
     const ta = (a.dateAdjReq.updatedAt || a.dateAdjReq.requestedAt) || 0;
@@ -2453,10 +2518,22 @@ function openMyAdjRequests() {
     return tb - ta;
   });
 
-  if (!invs.length) {
-    content.innerHTML = '<div class="my-adj-empty">You have no date adjustment requests.</div>';
+  const crInvs = state.invoices.filter(inv =>
+    inv.salesman === mySm && inv.costReviewReq
+  ).sort((a, b) => {
+    const ta = (a.costReviewReq.updatedAt || a.costReviewReq.requestedAt) || 0;
+    const tb = (b.costReviewReq.updatedAt || b.costReviewReq.requestedAt) || 0;
+    return tb - ta;
+  });
+
+  let html = '';
+
+  // Section 1: Date adjustment requests
+  html += '<div class="section-divider" style="margin:0 0 10px 0">📅 Date Adjustment Requests</div>';
+  if (!adjInvs.length) {
+    html += '<div class="my-adj-empty">No date adjustment requests.</div>';
   } else {
-    const rows = invs.map(inv => {
+    const rows = adjInvs.map(inv => {
       const req = inv.dateAdjReq;
       const isPending  = req.status === 'pending';
       const isApproved = req.status === 'approved';
@@ -2484,8 +2561,7 @@ function openMyAdjRequests() {
         <td>${editBtn}</td>
       </tr>`;
     }).join('');
-
-    content.innerHTML = `<table class="my-adj-table">
+    html += `<table class="my-adj-table">
       <thead><tr>
         <th>Invoice</th><th>Customer</th><th>Invoice Date</th>
         <th>Requested Date</th><th>Status</th><th>Submitted</th><th></th>
@@ -2493,77 +2569,305 @@ function openMyAdjRequests() {
       <tbody>${rows}</tbody>
     </table>`;
   }
+
+  // Section 2: Cost review requests
+  html += '<div class="section-divider" style="margin:18px 0 10px 0">💰 Cost Review Requests</div>';
+  if (!crInvs.length) {
+    html += '<div class="my-adj-empty">No cost review requests.</div>';
+  } else {
+    const crRows = crInvs.map(inv => {
+      const req = inv.costReviewReq;
+      const isPending  = req.status === 'pending';
+      const isReviewed = req.status === 'reviewed';
+      const isRejected = req.status === 'rejected';
+      const statusBadge = isPending
+        ? '<span class="adj-status-pending">⏳ Pending</span>'
+        : isReviewed
+          ? '<span class="adj-status-approved">✅ Reviewed</span>'
+          : '<span style="background:#c0392b;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px">✕ Rejected</span>';
+      const submittedAt = req.requestedAt
+        ? new Date(req.requestedAt).toLocaleDateString('en-MY',{day:'2-digit',month:'short',year:'numeric'})
+        : '—';
+      const editBtn = (isPending || isRejected)
+        ? `<button class="btn-re" style="font-size:11px;padding:3px 8px" onclick="document.getElementById('myAdjRequestsBg').classList.remove('open');openCostReviewRequest('${inv.id}')">Edit</button>`
+        : '';
+      return `<tr>
+        <td style="color:#4fc3f7;font-weight:700;white-space:nowrap">${inv.invoiceNo||'—'}</td>
+        <td style="color:#aaa;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${inv.customer||'—'}</td>
+        <td style="color:#e0e0e0;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${req.reason||'—'}</td>
+        <td>${statusBadge}</td>
+        <td style="color:#555;font-size:11px;white-space:nowrap">${submittedAt}</td>
+        <td>${editBtn}</td>
+      </tr>`;
+    }).join('');
+    html += `<table class="my-adj-table">
+      <thead><tr>
+        <th>Invoice</th><th>Customer</th><th>Reason</th>
+        <th>Status</th><th>Submitted</th><th></th>
+      </tr></thead>
+      <tbody>${crRows}</tbody>
+    </table>`;
+  }
+
+  content.innerHTML = html;
   document.getElementById('myAdjRequestsBg').classList.add('open');
 }
 
 function openAllAdjRequests() {
   const content = document.getElementById('allAdjRequestsContent');
   const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let html = '';
 
-  const requests = state.invoices
-    .filter(inv => inv.dateAdjReq || inv.adjustedDate)
-    .sort((a, b) => {
-      const order = { pending: 0, approved: 1 };
-      const sa = (a.dateAdjReq && order[a.dateAdjReq.status] != null) ? order[a.dateAdjReq.status] : 1;
-      const sb = (b.dateAdjReq && order[b.dateAdjReq.status] != null) ? order[b.dateAdjReq.status] : 1;
-      if (sa !== sb) return sa - sb;
-      const ta = (a.dateAdjReq && (a.dateAdjReq.updatedAt || a.dateAdjReq.requestedAt)) || 0;
-      const tb = (b.dateAdjReq && (b.dateAdjReq.updatedAt || b.dateAdjReq.requestedAt)) || 0;
-      return tb - ta;
-    });
-
-  if (!requests.length) {
-    content.innerHTML = '<div style="text-align:center;color:#555;padding:24px">No date adjustment requests.</div>';
-    document.getElementById('allAdjRequestsBg').classList.add('open');
-    return;
+  // Section 1: Date adjustment requests (management only)
+  if (session.role === 'management') {
+    html += '<div class="section-divider" style="margin:0 0 10px 0">📅 Date Adjustment Requests</div>';
+    const adjRequests = state.invoices
+      .filter(inv => inv.dateAdjReq || inv.adjustedDate)
+      .sort((a, b) => {
+        const order = { pending: 0, approved: 1 };
+        const sa = (a.dateAdjReq && order[a.dateAdjReq.status] != null) ? order[a.dateAdjReq.status] : 1;
+        const sb = (b.dateAdjReq && order[b.dateAdjReq.status] != null) ? order[b.dateAdjReq.status] : 1;
+        if (sa !== sb) return sa - sb;
+        const ta = (a.dateAdjReq && (a.dateAdjReq.updatedAt || a.dateAdjReq.requestedAt)) || 0;
+        const tb = (b.dateAdjReq && (b.dateAdjReq.updatedAt || b.dateAdjReq.requestedAt)) || 0;
+        return tb - ta;
+      });
+    if (!adjRequests.length) {
+      html += '<div style="text-align:center;color:#555;padding:16px">No date adjustment requests.</div>';
+    } else {
+      const rows = adjRequests.map(inv => {
+        const req = inv.dateAdjReq;
+        const status = req ? req.status : 'approved';
+        const statusBadge = status === 'pending'
+          ? '<span class="adj-status-pending">⏳ Pending</span>'
+          : '<span class="adj-status-approved">✓ Approved</span>';
+        const submittedAt = req && req.requestedAt
+          ? new Date(req.requestedAt).toLocaleDateString('en-MY',{day:'2-digit',month:'short',year:'numeric'})
+          : '—';
+        const requestedDate = req ? fmtDate(req.requestedDate) : '—';
+        const effectiveDate = inv.adjustedDate ? `<span style="color:#5dfc8d">${fmtDate(inv.adjustedDate)}</span>` : '—';
+        const actionBtn = status === 'pending'
+          ? `<button class="btn-adj-review" style="animation:none;font-size:11px;padding:4px 10px" onclick="document.getElementById('allAdjRequestsBg').classList.remove('open');openDateAdjReview('${inv.id}')">Review</button>`
+          : `<button class="btn-adj-edit" style="font-size:11px;padding:4px 10px" onclick="document.getElementById('allAdjRequestsBg').classList.remove('open');openDateAdjReview('${inv.id}')">Edit</button>`;
+        return `<tr>
+          <td style="font-weight:600;color:#fff">${esc(inv.invoiceNo||'—')}</td>
+          <td style="color:#e0e0e0">${esc(inv.customer||'—')}</td>
+          <td style="color:#4fc3f7">${esc(inv.salesman||'—')}</td>
+          <td style="color:#f39c12">${requestedDate}</td>
+          <td>${effectiveDate}</td>
+          <td>${statusBadge}</td>
+          <td style="color:#aaa;font-size:11px">${esc(req && req.requestedBy || '—')}</td>
+          <td style="color:#555;font-size:11px">${submittedAt}</td>
+          <td>${actionBtn}</td>
+        </tr>`;
+      }).join('');
+      html += `<table class="my-adj-table">
+        <thead><tr>
+          <th>Invoice</th><th>Customer</th><th>Agent</th>
+          <th>Requested Date</th><th>Effective Date</th><th>Status</th>
+          <th>Requested By</th><th>Submitted</th><th></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    }
   }
 
-  const rows = requests.map(inv => {
-    const req = inv.dateAdjReq;
-    const status = req ? req.status : 'approved';
-    const statusBadge = status === 'pending'
-      ? '<span class="adj-status-pending">⏳ Pending</span>'
-      : '<span class="adj-status-approved">✓ Approved</span>';
-    const submittedAt = req && req.requestedAt
-      ? new Date(req.requestedAt).toLocaleDateString('en-MY',{day:'2-digit',month:'short',year:'numeric'})
-      : '—';
-    const requestedDate = req ? fmtDate(req.requestedDate) : '—';
-    const effectiveDate = inv.adjustedDate ? `<span style="color:#5dfc8d">${fmtDate(inv.adjustedDate)}</span>` : '—';
-    const actionBtn = status === 'pending'
-      ? `<button class="btn-adj-review" style="animation:none;font-size:11px;padding:4px 10px" onclick="document.getElementById('allAdjRequestsBg').classList.remove('open');openDateAdjReview('${inv.id}')">Review</button>`
-      : `<button class="btn-adj-edit" style="font-size:11px;padding:4px 10px" onclick="document.getElementById('allAdjRequestsBg').classList.remove('open');openDateAdjReview('${inv.id}')">Edit</button>`;
-    return `<tr>
-      <td style="font-weight:600;color:#fff">${esc(inv.invoiceNo||'—')}</td>
-      <td style="color:#e0e0e0">${esc(inv.customer||'—')}</td>
-      <td style="color:#4fc3f7">${esc(inv.salesman||'—')}</td>
-      <td style="color:#f39c12">${requestedDate}</td>
-      <td>${effectiveDate}</td>
-      <td>${statusBadge}</td>
-      <td style="color:#aaa;font-size:11px">${esc(req && req.requestedBy || '—')}</td>
-      <td style="color:#555;font-size:11px">${submittedAt}</td>
-      <td>${actionBtn}</td>
-    </tr>`;
-  }).join('');
+  // Section 2: Cost review requests (admin + management)
+  html += `<div class="section-divider" style="margin:${session.role==='management'?'18px':'0'} 0 10px 0">💰 Cost Review Requests</div>`;
+  const crRequests = state.invoices
+    .filter(inv => inv.costReviewReq)
+    .sort((a, b) => {
+      const order = { pending: 0, reviewed: 1, rejected: 2 };
+      const sa = order[a.costReviewReq.status] ?? 2;
+      const sb = order[b.costReviewReq.status] ?? 2;
+      if (sa !== sb) return sa - sb;
+      const ta = (a.costReviewReq.updatedAt || a.costReviewReq.requestedAt) || 0;
+      const tb = (b.costReviewReq.updatedAt || b.costReviewReq.requestedAt) || 0;
+      return tb - ta;
+    });
+  if (!crRequests.length) {
+    html += '<div style="text-align:center;color:#555;padding:16px">No cost review requests.</div>';
+  } else {
+    const crRows = crRequests.map(inv => {
+      const req = inv.costReviewReq;
+      const statusBadge = req.status === 'pending'
+        ? '<span class="adj-status-pending">⏳ Pending</span>'
+        : req.status === 'reviewed'
+          ? '<span class="adj-status-approved">✅ Reviewed</span>'
+          : '<span style="background:#c0392b;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px">✕ Rejected</span>';
+      const submittedAt = req.requestedAt
+        ? new Date(req.requestedAt).toLocaleDateString('en-MY',{day:'2-digit',month:'short',year:'numeric'})
+        : '—';
+      const actionBtn = req.status === 'pending'
+        ? `<button class="btn-cost-review" style="animation:none;font-size:11px;padding:4px 10px" onclick="document.getElementById('allAdjRequestsBg').classList.remove('open');openCostReviewMgmt('${inv.id}')">Review</button>`
+        : '';
+      return `<tr>
+        <td style="font-weight:600;color:#fff">${esc(inv.invoiceNo||'—')}</td>
+        <td style="color:#e0e0e0">${esc(inv.customer||'—')}</td>
+        <td style="color:#4fc3f7">${esc(inv.salesman||'—')}</td>
+        <td style="color:#e0e0e0;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(req.reason||'—')}</td>
+        <td>${statusBadge}</td>
+        <td style="color:#aaa;font-size:11px">${esc(req.requestedBy||'—')}</td>
+        <td style="color:#555;font-size:11px">${submittedAt}</td>
+        <td>${actionBtn}</td>
+      </tr>`;
+    }).join('');
+    html += `<table class="my-adj-table">
+      <thead><tr>
+        <th>Invoice</th><th>Customer</th><th>Agent</th>
+        <th>Reason</th><th>Status</th>
+        <th>Requested By</th><th>Submitted</th><th></th>
+      </tr></thead>
+      <tbody>${crRows}</tbody>
+    </table>`;
+  }
 
-  content.innerHTML = `<table class="my-adj-table">
-    <thead><tr>
-      <th>Invoice</th><th>Customer</th><th>Agent</th>
-      <th>Requested Date</th><th>Effective Date</th><th>Status</th>
-      <th>Requested By</th><th>Submitted</th><th></th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
+  content.innerHTML = html;
   document.getElementById('allAdjRequestsBg').classList.add('open');
 }
 
 function updateAdjNotifyBadge() {
-  if (!session || session.role !== 'management') return;
-  const count = state.invoices.filter(inv => inv.dateAdjReq && inv.dateAdjReq.status === 'pending').length;
-  const btn = document.getElementById('adjNotifyBtn');
-  if (!btn) return;
-  document.getElementById('adjNotifyCount').textContent = count;
-  btn.style.display = count > 0 ? '' : 'none';
-  if (count === 0 && adjPendingFilter) { adjPendingFilter = false; btn.classList.remove('active'); }
+  if (!session) return;
+  if (session.role === 'management') {
+    const count = state.invoices.filter(inv => inv.dateAdjReq && inv.dateAdjReq.status === 'pending').length;
+    const btn = document.getElementById('adjNotifyBtn');
+    if (btn) {
+      document.getElementById('adjNotifyCount').textContent = count;
+      btn.style.display = count > 0 ? '' : 'none';
+      if (count === 0 && adjPendingFilter) { adjPendingFilter = false; btn.classList.remove('active'); }
+    }
+  }
+  if (session.role === 'admin' || session.role === 'management') {
+    const crCount = state.invoices.filter(inv => inv.costReviewReq && inv.costReviewReq.status === 'pending').length;
+    const crBtn = document.getElementById('costRevNotifyBtn');
+    if (crBtn) {
+      document.getElementById('costRevNotifyCount').textContent = crCount;
+      crBtn.style.display = crCount > 0 ? '' : 'none';
+    }
+  }
+}
+
+// ---- Cost Review Request ----
+async function persistCostReviewReq(invId) {
+  if (!fbReady) return;
+  if (!state.invoices.find(i => i.id === invId)) return;
+  state.lastModified = Date.now();
+  const toSave = JSON.parse(JSON.stringify(state));
+  setSyncStatus('syncing');
+  try {
+    await fbRef.set(toSave);
+    setSyncStatus('synced');
+  } catch(e) {
+    setSyncStatus('offline');
+    alert('Failed to save your request. Please check your connection and try again.');
+  }
+}
+
+function openCostReviewRequest(id) {
+  costReviewId = id;
+  const inv = state.invoices.find(i => i.id === id);
+  if (!inv) return;
+  const existing = inv.costReviewReq && inv.costReviewReq.status === 'pending' ? inv.costReviewReq : null;
+  document.getElementById('costReviewReqTitle').textContent = existing ? '💰 Edit Cost Review Request' : '💰 Request Cost Review';
+  document.getElementById('costReviewReqInfo').innerHTML =
+    `<div class="adj-info-row"><span class="adj-info-label">Invoice</span><span class="adj-info-val">${inv.invoiceNo||'—'}</span></div>
+     <div class="adj-info-row"><span class="adj-info-label">Customer</span><span class="adj-info-val">${inv.customer||'—'}</span></div>
+     <div class="adj-info-row"><span class="adj-info-label">Amount</span><span class="adj-info-val">${fmtRM(totalPayable(inv))}</span></div>`;
+  document.getElementById('fCostReviewReason').value = existing ? existing.reason : '';
+  document.getElementById('btnRemoveCostReview').style.display = existing ? 'inline-block' : 'none';
+  document.getElementById('costReviewReqBg').classList.add('open');
+}
+function closeCostReviewRequest() {
+  document.getElementById('costReviewReqBg').classList.remove('open');
+  costReviewId = null;
+}
+async function submitCostReviewRequest() {
+  const inv = state.invoices.find(i => i.id === costReviewId);
+  if (!inv) return;
+  const reason = document.getElementById('fCostReviewReason').value.trim();
+  if (!reason) { alert('Please provide a reason for the cost review.'); return; }
+  const btn = document.getElementById('btnSubmitCostReview');
+  btn.disabled = true; btn.textContent = 'Submitting…';
+  try {
+    const isEdit = inv.costReviewReq && inv.costReviewReq.status === 'pending';
+    inv.costReviewReq = {
+      reason,
+      requestedBy: session.name || session.email,
+      requestedAt: isEdit ? inv.costReviewReq.requestedAt : Date.now(),
+      updatedAt: isEdit ? Date.now() : undefined,
+      status: 'pending'
+    };
+    inv.updatedAt = Date.now();
+    await persistCostReviewReq(costReviewId);
+    renderList();
+    closeCostReviewRequest();
+    const adjMsg = `💰 <b>Cost Review Request</b>\n\nInvoice: <b>${inv.invoiceNo||'—'}</b>\nCustomer: ${inv.customer||'—'}\nBy: ${session.name||session.email}\nReason: ${reason}`;
+    notifyRoles(['admin', 'management'], adjMsg);
+    logNotification(adjMsg, { roles: ['admin', 'management'], invoiceId: inv.id });
+  } catch(e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Submit Request';
+  }
+}
+async function cancelCostReviewRequest() {
+  const inv = state.invoices.find(i => i.id === costReviewId);
+  if (!inv) return;
+  if (!confirm('Remove this cost review request?')) return;
+  inv.costReviewReq = null;
+  inv.updatedAt = Date.now();
+  await persistCostReviewReq(costReviewId);
+  renderList();
+  closeCostReviewRequest();
+}
+
+function openCostReviewMgmt(id) {
+  costReviewId = id;
+  const inv = state.invoices.find(i => i.id === id);
+  if (!inv || !inv.costReviewReq) return;
+  const req = inv.costReviewReq;
+  const submittedAt = req.requestedAt
+    ? new Date(req.requestedAt).toLocaleDateString('en-MY',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})
+    : '—';
+  document.getElementById('costReviewMgmtInfo').innerHTML =
+    `<div class="adj-info-row"><span class="adj-info-label">Invoice</span><span class="adj-info-val">${inv.invoiceNo||'—'}</span></div>
+     <div class="adj-info-row"><span class="adj-info-label">Customer</span><span class="adj-info-val">${inv.customer||'—'}</span></div>
+     <div class="adj-info-row"><span class="adj-info-label">Agent</span><span class="adj-info-val">${inv.salesman||'—'}</span></div>
+     <div class="adj-info-row"><span class="adj-info-label">Requested by</span><span class="adj-info-val">${req.requestedBy||'—'} <span style="color:#555;font-size:11px">${submittedAt}</span></span></div>
+     <div class="adj-info-row"><span class="adj-info-label">Reason</span><span class="adj-info-val" style="color:#f39c12">${req.reason||'—'}</span></div>`;
+  const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const items = inv.costItems && inv.costItems.length > 0
+    ? inv.costItems
+    : (inv.cost > 0 ? [{desc: '', amount: inv.cost}] : []);
+  document.getElementById('costReviewMgmtItems').innerHTML = items.length
+    ? items.map(item => `<div class="cost-item-row" style="pointer-events:none">
+        <span style="flex:1;font-size:13px;color:#e0e0e0;padding:4px 0">${esc(item.desc)||'<span style="color:#555">—</span>'}</span>
+        <span style="width:110px;text-align:right;font-size:13px;color:#e0e0e0;padding:4px 0;flex-shrink:0">${fmtRM(item.amount)}</span>
+      </div>`).join('')
+    : '<div style="color:#aaa;font-size:13px;padding:8px 0">No cost details entered yet.</div>';
+  document.getElementById('costReviewMgmtTotal').textContent = fmtRM(totalCost(inv));
+  document.getElementById('costReviewMgmtBg').classList.add('open');
+}
+function closeCostReviewMgmt() {
+  document.getElementById('costReviewMgmtBg').classList.remove('open');
+  costReviewId = null;
+}
+function markCostReviewDone() {
+  const inv = state.invoices.find(i => i.id === costReviewId);
+  if (!inv) return;
+  inv.costReviewReq = { ...inv.costReviewReq, status: 'reviewed', reviewedBy: session.name||session.email, reviewedAt: Date.now() };
+  inv.updatedAt = Date.now();
+  persistState(); renderList();
+  closeCostReviewMgmt();
+}
+function rejectCostReview() {
+  const inv = state.invoices.find(i => i.id === costReviewId);
+  if (!inv) return;
+  if (!confirm('Reject this request? The salesman can submit a new request.')) return;
+  inv.costReviewReq = { ...inv.costReviewReq, status: 'rejected', reviewedBy: session.name||session.email, reviewedAt: Date.now() };
+  inv.updatedAt = Date.now();
+  persistState(); renderList();
+  closeCostReviewMgmt();
 }
 
 function toggleAdjPendingFilter() {
@@ -3384,6 +3688,7 @@ document.addEventListener('keydown', e => {
   if (e.key==='Escape') {
     closeInvoiceModal(); closePaymentModal(); closeCommentsModal(); closeProfileModal();
     closeDateAdjRequest(); closeDateAdjReview();
+    closeCostReviewRequest(); closeCostReviewMgmt();
     document.getElementById('myAdjRequestsBg').classList.remove('open');
     document.getElementById('allAdjRequestsBg').classList.remove('open');
     document.getElementById('commissionBg').classList.remove('open');

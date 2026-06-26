@@ -2094,7 +2094,7 @@ function renderPayList(inv) {
           </div>
           <div>
             <div class="pay-date">${fmtDate(p.date)}</div>
-            ${canEdit()?`<button class="pay-del" onclick="deletePayment('${inv.id}',${i})">✕ Remove</button>`:''}
+            ${canPay()?`<button class="pay-del" onclick="deletePayment('${inv.id}',${i})">✕ Remove</button>`:''}
           </div>
         </div>`).join('')
     : '<div class="pay-empty">No payments recorded yet.</div>';

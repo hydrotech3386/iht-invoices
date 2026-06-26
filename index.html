@@ -3657,7 +3657,13 @@ function init() {
 
   if (!fbReady) { showLoginScreen(); return; }
   setSyncStatus('syncing');
+  let authDone = false;
+  const authTimeout = setTimeout(() => {
+    if (!authDone) { authDone = true; setSyncStatus('offline'); showLoginScreen(); }
+  }, 8000);
   firebase.auth().signInAnonymously().then(async () => {
+    if (authDone) return;
+    authDone = true; clearTimeout(authTimeout);
     setSyncStatus('synced');
     const saved = sessionStorage.getItem('iht_session');
     const deviceToken = sessionStorage.getItem('iht_device_token');
@@ -3681,7 +3687,11 @@ function init() {
       } catch(e) { session = null; }
     }
     showLoginScreen();
-  }).catch(err => { console.error('Firebase auth failed:', err); setSyncStatus('offline'); showLoginScreen(); });
+  }).catch(err => {
+    if (authDone) return;
+    authDone = true; clearTimeout(authTimeout);
+    console.error('Firebase auth failed:', err); setSyncStatus('offline'); showLoginScreen();
+  });
 }
 
 document.addEventListener('keydown', e => {

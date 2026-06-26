@@ -1202,6 +1202,12 @@ function showLoginScreen() {
   showPanel('login');
 }
 
+function fbWithTimeout(ref, ms) {
+  return Promise.race([
+    ref.once('value'),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase did not respond. Check your connection and try again.')), ms))
+  ]);
+}
 async function loginAsync() {
   const email    = document.getElementById('loginEmail').value.trim().toLowerCase();
   const password = document.getElementById('loginPass').value;
@@ -1211,10 +1217,13 @@ async function loginAsync() {
   if (!usersRef) { errEl.textContent = 'Not connected. Please refresh the page.'; return; }
   try {
     if (fbReady && !firebase.auth().currentUser) {
-      await firebase.auth().signInAnonymously().catch(() => {});
+      await Promise.race([
+        firebase.auth().signInAnonymously(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timed out. Check your internet connection.')), 10000))
+      ]).catch(e => { throw e; });
     }
     const hash = await sha256(password);
-    const snap = await usersRef.once('value');
+    const snap = await fbWithTimeout(usersRef, 10000);
     const users = snap.val() || {};
     const entry = Object.entries(users).find(([,u]) =>
       (u.email||u.username||'').toLowerCase() === email && u.passwordHash === hash);
@@ -3670,7 +3679,7 @@ function init() {
     if (saved && deviceToken) {
       try {
         const parsed = JSON.parse(saved);
-        const snap = await usersRef.child(parsed.uid).child('activeSession').once('value');
+        const snap = await fbWithTimeout(usersRef.child(parsed.uid).child('activeSession'), 8000);
         if (snap.val() === deviceToken) {
           session = parsed;
           session.role = (session.role || '').toLowerCase();

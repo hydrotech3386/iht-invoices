@@ -1214,13 +1214,17 @@ async function loginAsync() {
   const errEl    = document.getElementById('loginError');
   errEl.textContent = '';
   if (!email || !password) { errEl.textContent = 'Enter email and password.'; return; }
-  if (!usersRef) { errEl.textContent = 'Not connected. Please refresh the page.'; return; }
+  if (!usersRef) { errEl.textContent = '❌ Firebase not initialised. Please hard-refresh (Ctrl+Shift+R).'; return; }
   try {
     if (fbReady && !firebase.auth().currentUser) {
-      await firebase.auth().signInAnonymously().catch(() => {});
+      errEl.style.color = '#f39c12';
+      errEl.textContent = '⏳ Step 1/2: Connecting to Firebase Auth…';
+      await firebase.auth().signInAnonymously().catch(e => { throw new Error('Auth failed: ' + e.message); });
     }
     const hash = await sha256(password);
-    const snap = await fbWithTimeout(usersRef, 10000);
+    errEl.textContent = '⏳ Step 2/2: Loading user data…';
+    const snap = await fbWithTimeout(usersRef, 20000);
+    errEl.style.color = '';
     const users = snap.val() || {};
     const entry = Object.entries(users).find(([,u]) =>
       (u.email||u.username||'').toLowerCase() === email && u.passwordHash === hash);
@@ -1260,7 +1264,7 @@ async function loginAsync() {
     sessionStorage.setItem('iht_device_token', deviceToken);
     document.getElementById('authOverlay').classList.remove('open');
     onLoggedIn();
-  } catch(err) { errEl.textContent = 'Login error: ' + err.message; console.error(err); }
+  } catch(err) { errEl.style.color = ''; errEl.textContent = '❌ ' + err.message; console.error(err); }
 }
 
 async function registerAsync() {

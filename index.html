@@ -3464,6 +3464,7 @@ async function processScanFile(file) {
     const prompt = `You are reading a Malaysian business invoice or tax invoice image.
 Extract these fields and return ONLY a valid JSON object, no explanation or markdown:
 {"invoiceNo":"invoice number","invoiceDate":"YYYY-MM-DD","customerName":"company or person billed","amount":total_as_number,"poNumber":"customer PO ref or null","term":"payment term like C.O.D or 30 days or null","notes":"brief goods/services description or null"}
+IMPORTANT: invoiceDate MUST be in YYYY-MM-DD format with leading zeros (e.g. 2026-06-26, never 26/06/2026 or 2026-6-26).
 Use null for any field not found. For amount, return only the final grand total as a plain number.`;
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -3500,7 +3501,8 @@ Use null for any field not found. For amount, return only the final grand total 
     if (!match) throw new Error('AI returned an unexpected response. Try a clearer photo.');
     const inv = JSON.parse(match[0]);
     if (inv.invoiceNo)    document.getElementById('fInvNo').value = inv.invoiceNo;
-    if (inv.invoiceDate)  document.getElementById('fInvDate').value = inv.invoiceDate;
+    const parsedDate = parseScannedDate(inv.invoiceDate);
+    if (parsedDate)       document.getElementById('fInvDate').value = parsedDate;
     if (inv.customerName) document.getElementById('fCustomer').value = inv.customerName;
     if (inv.amount) {
       const f = document.getElementById('fAmount'); f.value = formatNumber(inv.amount); formatAmountInput(f);
@@ -3524,6 +3526,33 @@ Use null for any field not found. For amount, return only the final grand total 
     console.error('Scan error:', e);
     alert('Could not read invoice.\n\n' + e.message + '\n\nTip: Make sure the photo is clear and well-lit.');
   }
+}
+
+function parseScannedDate(raw) {
+  if (!raw || raw === 'null') return null;
+  const s = String(raw).trim();
+  // Already ISO YYYY-MM-DD (with or without leading zeros)
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2,'0')}-${iso[3].padStart(2,'0')}`;
+  // YYYY/MM/DD
+  const ymd = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (ymd) return `${ymd[1]}-${ymd[2].padStart(2,'0')}-${ymd[3].padStart(2,'0')}`;
+  // DD/MM/YYYY or DD-MM-YYYY (Malaysian)
+  const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (dmy) return `${dmy[3]}-${dmy[2].padStart(2,'0')}-${dmy[1].padStart(2,'0')}`;
+  // Month-name formats e.g. "26 June 2026", "June 26, 2026", "26-Jun-2026"
+  const MONTHS = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+  const mn = s.match(/(\d{1,2})[\s\-]+([A-Za-z]{3,9})[\s\-,]+(\d{4})/);
+  if (mn) {
+    const m = MONTHS[(mn[2].slice(0,3).toLowerCase())];
+    if (m) return `${mn[3]}-${String(m).padStart(2,'0')}-${mn[1].padStart(2,'0')}`;
+  }
+  const nm = s.match(/([A-Za-z]{3,9})[\s\-]+(\d{1,2})[\s,]+(\d{4})/);
+  if (nm) {
+    const m = MONTHS[(nm[1].slice(0,3).toLowerCase())];
+    if (m) return `${nm[3]}-${String(m).padStart(2,'0')}-${nm[2].padStart(2,'0')}`;
+  }
+  return null;
 }
 
 function openRescanNotes() {

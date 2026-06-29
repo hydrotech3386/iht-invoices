@@ -1218,11 +1218,12 @@ async function loginAsync() {
   try {
     if (fbReady && !firebase.auth().currentUser) {
       errEl.style.color = '#f39c12';
-      errEl.textContent = '⏳ Step 1/2: Connecting to Firebase Auth…';
-      await firebase.auth().signInAnonymously().catch(e => { throw new Error('Auth failed: ' + e.message); });
+      errEl.textContent = '⏳ Connecting to Firebase…';
+      await firebase.auth().signInAnonymously().catch(() => {});
     }
     const hash = await sha256(password);
-    errEl.textContent = '⏳ Step 2/2: Loading user data…';
+    errEl.style.color = '#f39c12';
+    errEl.textContent = '⏳ Verifying credentials…';
     const snap = await fbWithTimeout(usersRef, 20000);
     errEl.style.color = '';
     const users = snap.val() || {};
@@ -1238,67 +1239,52 @@ async function loginAsync() {
     const [fuid, user] = entry;
     if (user.role === 'pending') { errEl.textContent = 'Account pending. Contact admin to activate.'; return; }
     if (user.role === 'suspended') { errEl.textContent = 'This account has been suspended. Contact admin.'; return; }
-    // Device binding check (1 mobile + 1 desktop allowed per account)
     const deviceId = getDeviceId();
-    const devType = getDeviceType(); // 'mobile' or 'desktop'
+    const devType = getDeviceType();
     const devKey = devType === 'mobile' ? 'linkedMobile' : 'linkedDesktop';
     const linked = user[devKey];
-    if (linked) {
-      if (linked.id !== deviceId) {
-        const typeName = devType === 'mobile' ? 'mobile device' : 'desktop/laptop';
-        const oldLabel = (linked.label||'Unknown').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        errEl.style.color = '';
-        errEl.innerHTML = `Login blocked — linked to a different ${typeName} (${oldLabel}).<br><br><a href="#" onclick="resetDeviceLink(event)" style="color:#4fc3f7;text-decoration:underline;font-weight:600">↩ This IS my device — reset device link &amp; log in</a>`;
-        document.getElementById('loginPass').value = '';
-        return;
-      }
-    } else {
-      await usersRef.child(fuid).update({ [devKey]: { id: deviceId, label: getDeviceLabel(), linkedAt: Date.now() } });
+    if (linked && linked.id !== deviceId) {
+      // Store context for one-click reset (no re-entry of password needed)
+      loginAsync._pendingReset = { fuid, devKey };
+      const typeName = devType === 'mobile' ? 'mobile device' : 'desktop/laptop';
+      errEl.style.color = '';
+      errEl.innerHTML = `⚠️ This account was last used on a different ${typeName}.<br><br>
+        <button onclick="resetDeviceLink()" style="background:#4fc3f7;border:none;border-radius:6px;padding:8px 18px;cursor:pointer;font-weight:700;font-size:13px;color:#0a1628;width:100%">↩ This is my device — log in here</button>`;
+      return;
     }
-    const normalizedRole = (user.role||'').toLowerCase();
-    if (user.role && user.role !== normalizedRole) {
-      await usersRef.child(fuid).update({ role: normalizedRole });
-    }
-    session = { name: user.name||user.username, email: user.email||user.username, role: normalizedRole, salesman: user.salesman||null, uid: fuid, telegramChatId: user.telegramChatId||null };
-    const deviceToken = uid() + uid();
-    await usersRef.child(fuid).update({ activeSession: deviceToken });
-    sessionStorage.setItem('iht_session', JSON.stringify(session));
-    sessionStorage.setItem('iht_device_token', deviceToken);
-    document.getElementById('authOverlay').classList.remove('open');
-    onLoggedIn();
+    await completeLogin(fuid, user, devKey, deviceId);
   } catch(err) { errEl.style.color = ''; errEl.textContent = '❌ ' + err.message; console.error(err); }
 }
 
-async function resetDeviceLink(e) {
-  e.preventDefault();
-  const email    = document.getElementById('loginEmail').value.trim().toLowerCase();
-  const password = document.getElementById('loginPass').value;
-  const errEl    = document.getElementById('loginError');
-  if (!password) {
-    errEl.style.color = '';
-    errEl.innerHTML = 'Enter your password first, then click the reset link.';
-    document.getElementById('loginPass').focus();
-    return;
-  }
-  if (!confirm('Reset device link for this account and log in from this device?')) return;
+async function resetDeviceLink() {
+  const ctx = loginAsync._pendingReset;
+  const errEl = document.getElementById('loginError');
+  if (!ctx) { errEl.textContent = 'Please sign in again first.'; return; }
   try {
     errEl.style.color = '#f39c12';
-    errEl.innerHTML = '⏳ Resetting device link…';
-    if (fbReady && !firebase.auth().currentUser) {
-      await firebase.auth().signInAnonymously().catch(() => {});
-    }
-    const hash = await sha256(password);
-    const snap = await fbWithTimeout(usersRef, 20000);
-    const users = snap.val() || {};
-    const entry = Object.entries(users).find(([,u]) =>
-      (u.email||u.username||'').toLowerCase() === email && u.passwordHash === hash);
-    if (!entry) { errEl.style.color = ''; errEl.textContent = '❌ Invalid password.'; return; }
-    const [fuid] = entry;
-    const devKey = getDeviceType() === 'mobile' ? 'linkedMobile' : 'linkedDesktop';
-    await usersRef.child(fuid).update({ [devKey]: null });
-    errEl.innerHTML = '✅ Device link removed. Logging in…';
-    await loginAsync();
+    errEl.textContent = '⏳ Resetting device link…';
+    await usersRef.child(ctx.fuid).update({ [ctx.devKey]: null });
+    const deviceId = getDeviceId();
+    const snap = await fbWithTimeout(usersRef.child(ctx.fuid), 10000);
+    const user = snap.val();
+    delete loginAsync._pendingReset;
+    await completeLogin(ctx.fuid, user, ctx.devKey, deviceId);
   } catch(err) { errEl.style.color = ''; errEl.textContent = '❌ ' + err.message; }
+}
+
+async function completeLogin(fuid, user, devKey, deviceId) {
+  await usersRef.child(fuid).update({ [devKey]: { id: deviceId, label: getDeviceLabel(), linkedAt: Date.now() } });
+  const normalizedRole = (user.role||'').toLowerCase();
+  if (user.role && user.role !== normalizedRole) {
+    await usersRef.child(fuid).update({ role: normalizedRole });
+  }
+  session = { name: user.name||user.username, email: user.email||user.username, role: normalizedRole, salesman: user.salesman||null, uid: fuid, telegramChatId: user.telegramChatId||null };
+  const deviceToken = uid() + uid();
+  await usersRef.child(fuid).update({ activeSession: deviceToken });
+  sessionStorage.setItem('iht_session', JSON.stringify(session));
+  sessionStorage.setItem('iht_device_token', deviceToken);
+  document.getElementById('authOverlay').classList.remove('open');
+  onLoggedIn();
 }
 
 async function registerAsync() {

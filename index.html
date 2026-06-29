@@ -165,8 +165,8 @@
   .days-pill.due{background:#2d2400;color:#f1c40f}
 
   /* Auth */
-  .auth-overlay{position:fixed;inset:0;background:#1a1a2e;z-index:999;display:flex;align-items:center;justify-content:center;visibility:hidden;opacity:0;transition:opacity .3s}
-  .auth-overlay.open{visibility:visible;opacity:1}
+  .auth-overlay{position:fixed;inset:0;background:#1a1a2e;z-index:999;display:flex;align-items:center;justify-content:center;visibility:visible;opacity:1;transition:opacity .3s}
+  .auth-overlay.hidden{visibility:hidden;opacity:0;pointer-events:none}
   .auth-card{background:#16213e;border:1px solid #0f3460;border-radius:12px;padding:32px 28px;width:100%;max-width:340px;text-align:center}
   .auth-panel{display:none}.auth-panel.active{display:block}
   .auth-card h2{color:#e94560;font-size:18px;margin-bottom:6px}
@@ -1199,7 +1199,7 @@ function showPanel(name) {
 
 function showLoginScreen() {
   document.getElementById('loginError').textContent = '';
-  document.getElementById('authOverlay').classList.add('open');
+  document.getElementById('authOverlay').classList.remove('hidden');
   showPanel('login');
 }
 
@@ -1282,7 +1282,7 @@ async function completeLogin(fuid, user, devKey, deviceId) {
   session = { name: user.name||user.username, email: user.email||user.username, role: normalizedRole, salesman: user.salesman||null, uid: fuid, telegramChatId: user.telegramChatId||null };
   sessionStorage.setItem('iht_session', JSON.stringify(session));
   sessionStorage.setItem('iht_device_token', deviceToken);
-  document.getElementById('authOverlay').classList.remove('open');
+  document.getElementById('authOverlay').classList.add('hidden');
   onLoggedIn();
 }
 
@@ -1314,7 +1314,7 @@ async function registerAsync() {
       await usersRef.child(newUid).update({ activeSession: deviceToken });
       sessionStorage.setItem('iht_session', JSON.stringify(session));
       sessionStorage.setItem('iht_device_token', deviceToken);
-      document.getElementById('authOverlay').classList.remove('open');
+      document.getElementById('authOverlay').classList.add('hidden');
       onLoggedIn();
     } else {
       msgEl.textContent = 'Account created! Waiting for admin to activate.';

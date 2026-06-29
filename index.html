@@ -1243,33 +1243,16 @@ async function loginAsync() {
     const devKey = devType === 'mobile' ? 'linkedMobile' : 'linkedDesktop';
     const linked = user[devKey];
     if (linked && linked.id !== deviceId) {
-      // Store context for one-click reset (no re-entry of password needed)
-      loginAsync._pendingReset = { fuid, devKey };
       const typeName = devType === 'mobile' ? 'mobile device' : 'desktop/laptop';
       errEl.style.color = '';
-      errEl.innerHTML = `⚠️ This account was last used on a different ${typeName}.<br><br>
-        <button onclick="resetDeviceLink()" style="background:#4fc3f7;border:none;border-radius:6px;padding:8px 18px;cursor:pointer;font-weight:700;font-size:13px;color:#0a1628;width:100%">↩ This is my device — log in here</button>`;
+      errEl.textContent = `Login blocked — this account is linked to a different ${typeName} (${linked.label||'Unknown'}). Contact admin to remove the existing link.`;
+      document.getElementById('loginPass').value = '';
       return;
     }
     await completeLogin(fuid, user, devKey, deviceId);
   } catch(err) { errEl.style.color = ''; errEl.textContent = '❌ ' + err.message; console.error(err); }
 }
 
-async function resetDeviceLink() {
-  const ctx = loginAsync._pendingReset;
-  const errEl = document.getElementById('loginError');
-  if (!ctx) { errEl.textContent = 'Please sign in again first.'; return; }
-  try {
-    errEl.style.color = '#f39c12';
-    errEl.textContent = '⏳ Resetting device link…';
-    usersRef.child(ctx.fuid).update({ [ctx.devKey]: null }).catch(() => {});
-    const deviceId = getDeviceId();
-    const snap = await fbWithTimeout(usersRef.child(ctx.fuid), 10000);
-    const user = snap.val();
-    delete loginAsync._pendingReset;
-    await completeLogin(ctx.fuid, user, ctx.devKey, deviceId);
-  } catch(err) { errEl.style.color = ''; errEl.textContent = '❌ ' + err.message; }
-}
 
 async function completeLogin(fuid, user, devKey, deviceId) {
   const normalizedRole = (user.role||'').toLowerCase();

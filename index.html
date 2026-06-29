@@ -520,6 +520,7 @@
   <div class="sync-status">
     <div class="sync-dot syncing" id="syncDot"></div>
     <span id="syncLabel">Connecting...</span>
+    <span id="resetHint" style="display:none;margin-left:6px;font-size:11px">· <a href="#" onclick="clearAndReload();return false" style="color:#e94560;text-decoration:underline">Reset &amp; Reload</a></span>
   </div>
   <input class="search-box" id="searchBox" type="text" placeholder="Search customer, invoice no..." oninput="renderList()">
   <div class="user-info" id="userInfo" style="display:none">
@@ -1469,6 +1470,11 @@ function setSyncStatus(s) {
   if (!dot) return;
   dot.className = 'sync-dot ' + s;
   lbl.textContent = s==='synced' ? 'Synced ✓' : s==='syncing' ? 'Syncing…' : 'Offline';
+}
+function clearAndReload() {
+  try { localStorage.removeItem('iht_device_id'); } catch(e) {}
+  try { sessionStorage.removeItem('iht_session'); sessionStorage.removeItem('iht_device_token'); } catch(e) {}
+  location.reload(true);
 }
 
 // ---- State helpers ----
@@ -3692,6 +3698,7 @@ function init() {
 
   if (!fbReady) { showLoginScreen(); return; }
   setSyncStatus('syncing');
+  setTimeout(() => { if (!session) { const h = document.getElementById('resetHint'); if (h) h.style.display = ''; } }, 12000);
   let authDone = false;
   const authTimeout = setTimeout(() => {
     if (!authDone) { authDone = true; setSyncStatus('offline'); showLoginScreen(); }

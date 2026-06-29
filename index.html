@@ -1243,7 +1243,7 @@ async function loginAsync() {
     const devKey = devType === 'mobile' ? 'linkedMobile' : 'linkedDesktop';
     const linked = user[devKey];
     const isManagement = (user.role||'').toLowerCase() === 'management';
-    if (!isManagement && linked && linked.id !== deviceId) {
+    if (!isManagement && !user.deviceBindingExempt && linked && linked.id !== deviceId) {
       const typeName = devType === 'mobile' ? 'mobile device' : 'desktop/laptop';
       errEl.style.color = '';
       errEl.textContent = `Login blocked — this account is linked to a different ${typeName} (${linked.label||'Unknown'}). Contact admin to remove the existing link.`;
@@ -3210,6 +3210,15 @@ function renderUserMgmt() {
         : `<div style="font-size:10px;color:#333;margin-bottom:5px">${type}: <span style="font-style:italic">none</span></div>`;
     };
     const devCell = (mob||dsk) ? devSlot(mob,'📱','linkedMobile')+devSlot(dsk,'💻','linkedDesktop') : `<span style="color:#333;font-size:11px;font-style:italic">None linked</span>`;
+    const exempt = !!u.deviceBindingExempt;
+    const exemptToggle = session.role === 'management'
+      ? `<div style="margin-top:6px">
+           <label style="font-size:10px;color:${exempt?'#5dfc8d':'#555'};cursor:pointer;user-select:none">
+             <input type="checkbox" ${exempt?'checked':''} onchange="toggleDeviceExempt('${fuid}',this.checked)" style="margin-right:4px">
+             Any device
+           </label>
+         </div>`
+      : (exempt ? `<div style="font-size:10px;color:#5dfc8d;margin-top:4px">✓ Any device</div>` : '');
     return `<tr>
       <td style="font-weight:600;color:#fff">${u.name||u.username||'—'}${isSelf?' <span class="self-badge">YOU</span>':''}<br><span style="font-size:11px;color:#555;font-weight:400">${u.email||''}</span></td>
       <td>
@@ -3223,7 +3232,7 @@ function renderUserMgmt() {
           <option value="">—</option>${smSel}
         </select>
       </td>
-      <td>${devCell}</td>
+      <td>${devCell}${exemptToggle}</td>
       <td style="color:#555;font-size:12px">${u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-MY') : '—'}</td>
       <td style="text-align:right;white-space:nowrap">
         ${isPending ? `<button class="btn-activate" onclick="activateUser('${fuid}')">✓ Activate</button>` :
@@ -3329,6 +3338,10 @@ async function removeDeviceLink(fuid, devKey) {
   await usersRef.child(fuid).update({ [devKey]: null });
   usersCache[fuid] = { ...usersCache[fuid], [devKey]: null };
   renderUserMgmt();
+}
+async function toggleDeviceExempt(fuid, exempt) {
+  await usersRef.child(fuid).update({ deviceBindingExempt: exempt || null });
+  usersCache[fuid] = { ...usersCache[fuid], deviceBindingExempt: exempt || null };
 }
 
 async function deleteUser(fuid) {

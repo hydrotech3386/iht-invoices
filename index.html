@@ -1218,8 +1218,6 @@ async function loginAsync() {
   if (!usersRef) { errEl.textContent = '❌ Firebase not initialised. Please hard-refresh (Ctrl+Shift+R).'; return; }
   try {
     if (fbReady && !firebase.auth().currentUser) {
-      errEl.style.color = '#f39c12';
-      errEl.textContent = '⏳ Connecting to Firebase…';
       await firebase.auth().signInAnonymously().catch(() => {});
     }
     const hash = await sha256(password);
@@ -1264,7 +1262,7 @@ async function resetDeviceLink() {
   try {
     errEl.style.color = '#f39c12';
     errEl.textContent = '⏳ Resetting device link…';
-    await usersRef.child(ctx.fuid).update({ [ctx.devKey]: null });
+    usersRef.child(ctx.fuid).update({ [ctx.devKey]: null }).catch(() => {});
     const deviceId = getDeviceId();
     const snap = await fbWithTimeout(usersRef.child(ctx.fuid), 10000);
     const user = snap.val();
@@ -1274,14 +1272,14 @@ async function resetDeviceLink() {
 }
 
 async function completeLogin(fuid, user, devKey, deviceId) {
-  await usersRef.child(fuid).update({ [devKey]: { id: deviceId, label: getDeviceLabel(), linkedAt: Date.now() } });
   const normalizedRole = (user.role||'').toLowerCase();
+  const deviceToken = uid() + uid();
+  // Fire-and-forget writes — don't block login if Firebase writes are slow/unavailable
+  usersRef.child(fuid).update({ [devKey]: { id: deviceId, label: getDeviceLabel(), linkedAt: Date.now() }, activeSession: deviceToken }).catch(() => {});
   if (user.role && user.role !== normalizedRole) {
-    await usersRef.child(fuid).update({ role: normalizedRole });
+    usersRef.child(fuid).update({ role: normalizedRole }).catch(() => {});
   }
   session = { name: user.name||user.username, email: user.email||user.username, role: normalizedRole, salesman: user.salesman||null, uid: fuid, telegramChatId: user.telegramChatId||null };
-  const deviceToken = uid() + uid();
-  await usersRef.child(fuid).update({ activeSession: deviceToken });
   sessionStorage.setItem('iht_session', JSON.stringify(session));
   sessionStorage.setItem('iht_device_token', deviceToken);
   document.getElementById('authOverlay').classList.remove('open');
@@ -1472,7 +1470,6 @@ function setSyncStatus(s) {
   lbl.textContent = s==='synced' ? 'Synced ✓' : s==='syncing' ? 'Syncing…' : 'Offline';
 }
 function clearAndReload() {
-  try { localStorage.removeItem('iht_device_id'); } catch(e) {}
   try { sessionStorage.removeItem('iht_session'); sessionStorage.removeItem('iht_device_token'); } catch(e) {}
   location.reload(true);
 }

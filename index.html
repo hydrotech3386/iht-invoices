@@ -544,7 +544,7 @@
   <select class="filter-select" id="salesmanFilter" onchange="renderSummary();renderList()">
     <option value="">All Agents</option>
   </select>
-  <select class="filter-select" id="monthFilter" onchange="renderList()">
+  <select class="filter-select" id="monthFilter" onchange="renderSummary();renderList()">
     <option value="">All Months</option>
   </select>
   <select class="filter-select" id="sortFilter" onchange="renderList()">
@@ -1598,6 +1598,8 @@ function renderSummary() {
     const smF = document.getElementById('salesmanFilter');
     if (smF && smF.value) invs = invs.filter(inv => inv.salesman===smF.value);
   }
+  const mF = document.getElementById('monthFilter');
+  if (mF && mF.value) invs = invs.filter(inv => (inv.invoiceDate||'').startsWith(mF.value));
   let outstanding=0,outN=0,partialTot=0,partialN=0,paidTot=0,paidN=0,totalTot=0;
   invs.forEach(inv => {
     const s = computeStatus(inv);

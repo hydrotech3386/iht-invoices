@@ -218,6 +218,7 @@
   .btn-all-adj-req{background:#6c3483;color:#fff}
   .btn-all-adj-req:hover{filter:brightness(1.15)}
   body:not([data-role="management"]):not([data-role="admin"]) .btn-all-adj-req{display:none}
+  body:not([data-role="management"]) .mgmt-only-action{display:none!important}
 
   /* User management */
   .user-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
@@ -883,9 +884,9 @@
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeDateAdjReview()">Cancel</button>
-      <button id="btnAdjRemove" style="display:none;background:#e94560;border:none;border-radius:6px;padding:8px 18px;cursor:pointer;font-weight:600;font-size:13px;color:#fff" onclick="removeAdjustment()">Remove Adjustment</button>
-      <button id="btnAdjReject" style="background:#e94560;border:none;border-radius:6px;padding:8px 18px;cursor:pointer;font-weight:600;font-size:13px;color:#fff" onclick="rejectDateAdj()">Reject</button>
-      <button id="btnAdjApprove" class="btn-confirm" onclick="approveDateAdj()">Approve</button>
+      <button id="btnAdjRemove" class="mgmt-only-action" style="display:none;background:#e94560;border:none;border-radius:6px;padding:8px 18px;cursor:pointer;font-weight:600;font-size:13px;color:#fff" onclick="removeAdjustment()">Remove Adjustment</button>
+      <button id="btnAdjReject" class="mgmt-only-action" style="background:#e94560;border:none;border-radius:6px;padding:8px 18px;cursor:pointer;font-weight:600;font-size:13px;color:#fff" onclick="rejectDateAdj()">Reject</button>
+      <button id="btnAdjApprove" class="btn-confirm mgmt-only-action" onclick="approveDateAdj()">Approve</button>
     </div>
   </div>
 </div>
@@ -920,9 +921,9 @@
       <strong id="costReviewMgmtTotal">RM 0.00</strong>
     </div>
     <div class="modal-actions">
-      <button class="btn-cancel" onclick="closeCostReviewMgmt()">Cancel</button>
-      <button style="background:#e94560;border:none;border-radius:6px;padding:8px 18px;cursor:pointer;font-weight:600;font-size:13px;color:#fff" onclick="rejectCostReview()">Reject</button>
-      <button class="btn-confirm" onclick="markCostReviewDone()">Mark as Reviewed</button>
+      <button class="btn-cancel" onclick="closeCostReviewMgmt()">Close</button>
+      <button class="mgmt-only-action" style="background:#e94560;border:none;border-radius:6px;padding:8px 18px;cursor:pointer;font-weight:600;font-size:13px;color:#fff" onclick="rejectCostReview()">Reject</button>
+      <button class="btn-confirm mgmt-only-action" onclick="markCostReviewDone()">Mark as Reviewed</button>
     </div>
   </div>
 </div>
@@ -1782,7 +1783,7 @@ function renderList() {
     const crReq = inv.costReviewReq;
     const canReqCR  = isOwnInv && (!crReq || crReq.status==='rejected');
     const canEditCR = isOwnInv && crReq && crReq.status==='pending';
-    const hasPendingCR = (session.role==='admin'||session.role==='management') && crReq && crReq.status==='pending';
+    const hasPendingCR = session.role==='management' && crReq && crReq.status==='pending';
     const costRevBtn = canReqCR
       ? `<button class="btn-cost-req" title="Request cost review" onclick="openCostReviewRequest('${inv.id}')">💰📋</button>`
       : canEditCR
@@ -1888,7 +1889,7 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
       ? `<button class="btn-cost-req" onclick="openCostReviewRequest('${inv.id}')">💰📋</button>`
       : (isOwnInvC && crReqC && crReqC.status==='pending')
         ? `<button class="btn-cost-req" onclick="openCostReviewRequest('${inv.id}')">💰✎</button>`
-        : ((session.role==='admin'||session.role==='management') && crReqC && crReqC.status==='pending')
+        : (session.role==='management' && crReqC && crReqC.status==='pending')
           ? `<button class="btn-cost-review" onclick="openCostReviewMgmt('${inv.id}')">💰⚠</button>`
           : '';
     const showCostC = canEditCost();
@@ -2640,8 +2641,8 @@ function openAllAdjRequests() {
   const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   let html = '';
 
-  // Section 1: Date adjustment requests (management only)
-  if (session.role === 'management') {
+  // Section 1: Date adjustment requests (management + admin can view; only management can action)
+  if (session.role === 'management' || session.role === 'admin') {
     html += '<div class="section-divider" style="margin:0 0 10px 0">📅 Date Adjustment Requests</div>';
     const adjRequests = state.invoices
       .filter(inv => inv.dateAdjReq || inv.adjustedDate)
@@ -2668,7 +2669,7 @@ function openAllAdjRequests() {
           : '—';
         const requestedDate = req ? fmtDate(req.requestedDate) : '—';
         const effectiveDate = inv.adjustedDate ? `<span style="color:#5dfc8d">${fmtDate(inv.adjustedDate)}</span>` : '—';
-        const actionBtn = status === 'pending'
+        const actionBtn = session.role !== 'management' ? '' : status === 'pending'
           ? `<button class="btn-adj-review" style="animation:none;font-size:11px;padding:4px 10px" onclick="document.getElementById('allAdjRequestsBg').classList.remove('open');openDateAdjReview('${inv.id}')">Review</button>`
           : `<button class="btn-adj-edit" style="font-size:11px;padding:4px 10px" onclick="document.getElementById('allAdjRequestsBg').classList.remove('open');openDateAdjReview('${inv.id}')">Edit</button>`;
         return `<tr>
@@ -2720,7 +2721,7 @@ function openAllAdjRequests() {
       const submittedAt = req.requestedAt
         ? new Date(req.requestedAt).toLocaleDateString('en-MY',{day:'2-digit',month:'short',year:'numeric'})
         : '—';
-      const actionBtn = req.status === 'pending'
+      const actionBtn = session.role === 'management' && req.status === 'pending'
         ? `<button class="btn-cost-review" style="animation:none;font-size:11px;padding:4px 10px" onclick="document.getElementById('allAdjRequestsBg').classList.remove('open');openCostReviewMgmt('${inv.id}')">Review</button>`
         : '';
       return `<tr>

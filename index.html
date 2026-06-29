@@ -217,7 +217,8 @@
   body:not([data-role="salesman"]) .btn-my-adj-req { display:none }
   .btn-all-adj-req{background:#6c3483;color:#fff}
   .btn-all-adj-req:hover{filter:brightness(1.15)}
-  body:not([data-role="management"]):not([data-role="admin"]) .btn-all-adj-req{display:none}
+  body[data-role="salesman"] .btn-all-adj-req,.btn-all-adj-req{display:inline-flex}
+  body:not([data-role="management"]):not([data-role="admin"]):not([data-role="account"]):not([data-role="salesman"]) .btn-all-adj-req{display:none}
   body:not([data-role="management"]) .mgmt-only-action{display:none!important}
 
   /* User management */
@@ -2639,66 +2640,68 @@ function openMyAdjRequests() {
 function openAllAdjRequests() {
   const content = document.getElementById('allAdjRequestsContent');
   const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const isSalesman = session.role === 'salesman';
+  const mySalesman = session.salesman || null;
   let html = '';
 
-  // Section 1: Date adjustment requests (management + admin can view; only management can action)
-  if (session.role === 'management' || session.role === 'admin') {
-    html += '<div class="section-divider" style="margin:0 0 10px 0">📅 Date Adjustment Requests</div>';
-    const adjRequests = state.invoices
-      .filter(inv => inv.dateAdjReq || inv.adjustedDate)
-      .sort((a, b) => {
-        const order = { pending: 0, approved: 1 };
-        const sa = (a.dateAdjReq && order[a.dateAdjReq.status] != null) ? order[a.dateAdjReq.status] : 1;
-        const sb = (b.dateAdjReq && order[b.dateAdjReq.status] != null) ? order[b.dateAdjReq.status] : 1;
-        if (sa !== sb) return sa - sb;
-        const ta = (a.dateAdjReq && (a.dateAdjReq.updatedAt || a.dateAdjReq.requestedAt)) || 0;
-        const tb = (b.dateAdjReq && (b.dateAdjReq.updatedAt || b.dateAdjReq.requestedAt)) || 0;
-        return tb - ta;
-      });
-    if (!adjRequests.length) {
-      html += '<div style="text-align:center;color:#555;padding:16px">No date adjustment requests.</div>';
-    } else {
-      const rows = adjRequests.map(inv => {
-        const req = inv.dateAdjReq;
-        const status = req ? req.status : 'approved';
-        const statusBadge = status === 'pending'
-          ? '<span class="adj-status-pending">⏳ Pending</span>'
-          : '<span class="adj-status-approved">✓ Approved</span>';
-        const submittedAt = req && req.requestedAt
-          ? new Date(req.requestedAt).toLocaleDateString('en-MY',{day:'2-digit',month:'short',year:'numeric'})
-          : '—';
-        const requestedDate = req ? fmtDate(req.requestedDate) : '—';
-        const effectiveDate = inv.adjustedDate ? `<span style="color:#5dfc8d">${fmtDate(inv.adjustedDate)}</span>` : '—';
-        const actionBtn = session.role !== 'management' ? '' : status === 'pending'
-          ? `<button class="btn-adj-review" style="animation:none;font-size:11px;padding:4px 10px" onclick="document.getElementById('allAdjRequestsBg').classList.remove('open');openDateAdjReview('${inv.id}')">Review</button>`
-          : `<button class="btn-adj-edit" style="font-size:11px;padding:4px 10px" onclick="document.getElementById('allAdjRequestsBg').classList.remove('open');openDateAdjReview('${inv.id}')">Edit</button>`;
-        return `<tr>
-          <td style="font-weight:600;color:#fff">${esc(inv.invoiceNo||'—')}</td>
-          <td style="color:#e0e0e0">${esc(inv.customer||'—')}</td>
-          <td style="color:#4fc3f7">${esc(inv.salesman||'—')}</td>
-          <td style="color:#f39c12">${requestedDate}</td>
-          <td>${effectiveDate}</td>
-          <td>${statusBadge}</td>
-          <td style="color:#aaa;font-size:11px">${esc(req && req.requestedBy || '—')}</td>
-          <td style="color:#555;font-size:11px">${submittedAt}</td>
-          <td>${actionBtn}</td>
-        </tr>`;
-      }).join('');
-      html += `<table class="my-adj-table">
-        <thead><tr>
-          <th>Invoice</th><th>Customer</th><th>Agent</th>
-          <th>Requested Date</th><th>Effective Date</th><th>Status</th>
-          <th>Requested By</th><th>Submitted</th><th></th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>`;
-    }
+  // Section 1: Date adjustment requests (all roles; salesman sees own only)
+  html += '<div class="section-divider" style="margin:0 0 10px 0">📅 Date Adjustment Requests</div>';
+  const adjRequests = state.invoices
+    .filter(inv => (inv.dateAdjReq || inv.adjustedDate) && (!isSalesman || inv.salesman === mySalesman))
+    .sort((a, b) => {
+      const order = { pending: 0, approved: 1 };
+      const sa = (a.dateAdjReq && order[a.dateAdjReq.status] != null) ? order[a.dateAdjReq.status] : 1;
+      const sb = (b.dateAdjReq && order[b.dateAdjReq.status] != null) ? order[b.dateAdjReq.status] : 1;
+      if (sa !== sb) return sa - sb;
+      const ta = (a.dateAdjReq && (a.dateAdjReq.updatedAt || a.dateAdjReq.requestedAt)) || 0;
+      const tb = (b.dateAdjReq && (b.dateAdjReq.updatedAt || b.dateAdjReq.requestedAt)) || 0;
+      return tb - ta;
+    });
+  if (!adjRequests.length) {
+    html += '<div style="text-align:center;color:#555;padding:16px">No date adjustment requests.</div>';
+  } else {
+    const rows = adjRequests.map(inv => {
+      const req = inv.dateAdjReq;
+      const status = req ? req.status : 'approved';
+      const statusBadge = status === 'pending'
+        ? '<span class="adj-status-pending">⏳ Pending</span>'
+        : '<span class="adj-status-approved">✓ Approved</span>';
+      const submittedAt = req && req.requestedAt
+        ? new Date(req.requestedAt).toLocaleDateString('en-MY',{day:'2-digit',month:'short',year:'numeric'})
+        : '—';
+      const requestedDate = req ? fmtDate(req.requestedDate) : '—';
+      const effectiveDate = inv.adjustedDate ? `<span style="color:#5dfc8d">${fmtDate(inv.adjustedDate)}</span>` : '—';
+      const actionBtn = session.role !== 'management' ? '' : status === 'pending'
+        ? `<button class="btn-adj-review" style="animation:none;font-size:11px;padding:4px 10px" onclick="document.getElementById('allAdjRequestsBg').classList.remove('open');openDateAdjReview('${inv.id}')">Review</button>`
+        : `<button class="btn-adj-edit" style="font-size:11px;padding:4px 10px" onclick="document.getElementById('allAdjRequestsBg').classList.remove('open');openDateAdjReview('${inv.id}')">Edit</button>`;
+      const agentCol = isSalesman ? '' : `<td style="color:#4fc3f7">${esc(inv.salesman||'—')}</td>`;
+      return `<tr>
+        <td style="font-weight:600;color:#fff">${esc(inv.invoiceNo||'—')}</td>
+        <td style="color:#e0e0e0">${esc(inv.customer||'—')}</td>
+        ${agentCol}
+        <td style="color:#f39c12">${requestedDate}</td>
+        <td>${effectiveDate}</td>
+        <td>${statusBadge}</td>
+        <td style="color:#aaa;font-size:11px">${esc(req && req.requestedBy || '—')}</td>
+        <td style="color:#555;font-size:11px">${submittedAt}</td>
+        <td>${actionBtn}</td>
+      </tr>`;
+    }).join('');
+    const agentHeader = isSalesman ? '' : '<th>Agent</th>';
+    html += `<table class="my-adj-table">
+      <thead><tr>
+        <th>Invoice</th><th>Customer</th>${agentHeader}
+        <th>Requested Date</th><th>Effective Date</th><th>Status</th>
+        <th>Requested By</th><th>Submitted</th><th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
   }
 
-  // Section 2: Cost review requests (admin + management)
-  html += `<div class="section-divider" style="margin:${session.role==='management'?'18px':'0'} 0 10px 0">💰 Cost Review Requests</div>`;
+  // Section 2: Cost review requests (all roles; salesman sees own only)
+  html += '<div class="section-divider" style="margin:18px 0 10px 0">💰 Cost Review Requests</div>';
   const crRequests = state.invoices
-    .filter(inv => inv.costReviewReq)
+    .filter(inv => inv.costReviewReq && (!isSalesman || inv.salesman === mySalesman))
     .sort((a, b) => {
       const order = { pending: 0, reviewed: 1, rejected: 2 };
       const sa = order[a.costReviewReq.status] ?? 2;
@@ -2724,10 +2727,11 @@ function openAllAdjRequests() {
       const actionBtn = session.role === 'management' && req.status === 'pending'
         ? `<button class="btn-cost-review" style="animation:none;font-size:11px;padding:4px 10px" onclick="document.getElementById('allAdjRequestsBg').classList.remove('open');openCostReviewMgmt('${inv.id}')">Review</button>`
         : '';
+      const agentCol = isSalesman ? '' : `<td style="color:#4fc3f7">${esc(inv.salesman||'—')}</td>`;
       return `<tr>
         <td style="font-weight:600;color:#fff">${esc(inv.invoiceNo||'—')}</td>
         <td style="color:#e0e0e0">${esc(inv.customer||'—')}</td>
-        <td style="color:#4fc3f7">${esc(inv.salesman||'—')}</td>
+        ${agentCol}
         <td style="color:#e0e0e0;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(req.reason||'—')}</td>
         <td>${statusBadge}</td>
         <td style="color:#aaa;font-size:11px">${esc(req.requestedBy||'—')}</td>
@@ -2735,9 +2739,10 @@ function openAllAdjRequests() {
         <td>${actionBtn}</td>
       </tr>`;
     }).join('');
+    const agentHeader = isSalesman ? '' : '<th>Agent</th>';
     html += `<table class="my-adj-table">
       <thead><tr>
-        <th>Invoice</th><th>Customer</th><th>Agent</th>
+        <th>Invoice</th><th>Customer</th>${agentHeader}
         <th>Reason</th><th>Status</th>
         <th>Requested By</th><th>Submitted</th><th></th>
       </tr></thead>

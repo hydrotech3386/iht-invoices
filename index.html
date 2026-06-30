@@ -1732,6 +1732,7 @@ function renderList() {
   const showEdit = canEdit();
   const groupByMonth = sort === 'dateDesc' || sort === 'dateAsc';
   const hasCostCol = canViewCost();
+  const hasMarginCol = session && session.role === 'management';
 
   if (window.innerWidth <= 768) {
     el.innerHTML = buildCardsHTML(items, showPay, showEdit, groupByMonth);
@@ -1763,7 +1764,7 @@ function renderList() {
         lastMonth = month;
         const [y,mo] = month.split('-');
         const mLabel = new Date(y, mo-1, 1).toLocaleString('en',{month:'long',year:'numeric'});
-        rows += `<tr class="month-group-row"><td colspan="${hasCostCol ? 10 : 9}">${mLabel}</td></tr>`;
+        rows += `<tr class="month-group-row"><td colspan="${(hasCostCol ? 10 : 9) + (hasMarginCol ? 1 : 0)}">${mLabel}</td></tr>`;
       }
     }
 
@@ -1826,6 +1827,7 @@ function renderList() {
       <td class="td-days">${daysPill}</td>
       <td class="td-amount">${fmtRM(tp)}${s==='partial'&&bal>0?`<br><span style="font-size:10px;color:#e67e22">Bal: ${fmtRM(bal)}</span>`:''}</td>
       ${hasCostCol ? `<td class="td-cost">${costCell}</td>` : ''}
+      ${hasMarginCol ? (()=>{ const tc=totalCost(inv); if(!tc||!tp) return `<td class="td-margin" style="color:#555;text-align:right">—</td>`; const m=(tp-tc)/tp*100; const c=m<0?'#e94560':m<15?'#e67e22':m<30?'#f39c12':'#5dfc8d'; return `<td class="td-margin" style="text-align:right;font-weight:600;color:${c}">${m.toFixed(1)}%</td>`; })() : ''}
       <td class="td-actions">${actions}</td>
     </tr>`;
   });
@@ -1841,6 +1843,7 @@ function renderList() {
       <th style="text-align:center">Days</th>
       <th style="text-align:right">Amount</th>
       ${hasCostCol ? '<th style="text-align:right">Cost</th>' : ''}
+      ${hasMarginCol ? '<th style="text-align:right">Margin</th>' : ''}
       <th></th>
     </tr></thead>
     <tbody>${rows}</tbody>
@@ -1924,6 +1927,7 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
         ${inv.term && inv.term!=='C.O.D' ? `<span style="color:#666">${inv.term}</span>` : ''}
       </div>
       ${s==='partial' ? `<div class="inv-card-bal">Balance: ${fmtRM(bal)}</div>` : ''}
+      ${(()=>{ if (session.role!=='management') return ''; const tc=totalCost(inv); if(!tc||!tp) return ''; const m=(tp-tc)/tp*100; const c=m<0?'#e94560':m<15?'#e67e22':m<30?'#f39c12':'#5dfc8d'; return `<div style="font-size:11px;margin-top:3px">Margin: <span style="font-weight:700;color:${c}">${m.toFixed(1)}%</span></div>`; })()}
       ${acts}
     </div>`;
   });

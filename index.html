@@ -3828,13 +3828,11 @@ async function processScanFile(file) {
     const prompt = `You are extracting data from a Malaysian business invoice or tax invoice image.
 
 Return ONLY a valid JSON object with no explanation or markdown:
-{"invoiceNo":"...","invoiceDate":"YYYY-MM-DD","customerName":"...","amount":0,"poNumber":"...","term":"...","notes":"..."}
+{"invoiceNo":"...","customerName":"...","amount":0,"poNumber":"...","term":"...","notes":"..."}
 
 Field rules — read carefully:
 
 invoiceNo: The invoice number issued by the SELLER (labelled "Invoice No", "Tax Invoice No", "Inv No", etc.). Do NOT use the PO number here.
-
-invoiceDate: The date the invoice was ISSUED/CREATED by the seller. Look for the label "Date", "Invoice Date", "Tax Invoice Date". Do NOT use the due date, delivery date, or any other date. Malaysian invoices use DD/MM/YYYY — convert correctly to YYYY-MM-DD with leading zeros (e.g. 05/06/2025 → 2025-06-05, not 2025-05-06).
 
 customerName: The company or person being billed — usually under "Bill To", "To", "Attention" or in the address block.
 
@@ -3882,8 +3880,6 @@ Use null for any field not found.`;
     if (!match) throw new Error('AI returned an unexpected response. Try a clearer photo.');
     const inv = JSON.parse(match[0]);
     if (inv.invoiceNo)    document.getElementById('fInvNo').value = inv.invoiceNo;
-    const parsedDate = parseScannedDate(inv.invoiceDate);
-    if (parsedDate)       document.getElementById('fInvDate').value = parsedDate;
     if (inv.customerName) document.getElementById('fCustomer').value = inv.customerName;
     if (inv.amount) {
       const f = document.getElementById('fAmount'); f.value = formatNumber(inv.amount); formatAmountInput(f);

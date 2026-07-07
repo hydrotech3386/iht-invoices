@@ -3825,11 +3825,28 @@ async function processScanFile(file) {
   document.getElementById('scanOverlay').classList.add('open');
   try {
     const base64 = await fileToBase64(file);
-    const prompt = `You are reading a Malaysian business invoice or tax invoice image.
-Extract these fields and return ONLY a valid JSON object, no explanation or markdown:
-{"invoiceNo":"invoice number","invoiceDate":"YYYY-MM-DD","customerName":"company or person billed","amount":total_as_number,"poNumber":"customer PO ref or null","term":"payment term like C.O.D or 30 days or null","notes":"brief goods/services description or null"}
-IMPORTANT: invoiceDate MUST be in YYYY-MM-DD format with leading zeros (e.g. 2026-06-26, never 26/06/2026 or 2026-6-26).
-Use null for any field not found. For amount, return only the final grand total as a plain number.`;
+    const prompt = `You are extracting data from a Malaysian business invoice or tax invoice image.
+
+Return ONLY a valid JSON object with no explanation or markdown:
+{"invoiceNo":"...","invoiceDate":"YYYY-MM-DD","customerName":"...","amount":0,"poNumber":"...","term":"...","notes":"..."}
+
+Field rules — read carefully:
+
+invoiceNo: The invoice number issued by the SELLER (labelled "Invoice No", "Tax Invoice No", "Inv No", etc.). Do NOT use the PO number here.
+
+invoiceDate: The date the invoice was ISSUED/CREATED by the seller. Look for the label "Date", "Invoice Date", "Tax Invoice Date". Do NOT use the due date, delivery date, or any other date. Malaysian invoices use DD/MM/YYYY — convert correctly to YYYY-MM-DD with leading zeros (e.g. 05/06/2025 → 2025-06-05, not 2025-05-06).
+
+customerName: The company or person being billed — usually under "Bill To", "To", "Attention" or in the address block.
+
+amount: The final grand total payable as a plain number (include SST/GST if shown in the total). No currency symbols.
+
+poNumber: The CUSTOMER'S own purchase order reference number. Look specifically for labels: "P/O No", "P.O. No", "Purchase Order No", "Your Ref", "Your Reference", "Cust Ref", "Customer Ref", "Buyer's Order No". This is the buyer's number, NOT the seller's invoice number and NOT a delivery order number. Return null if not clearly found.
+
+term: Payment term such as "C.O.D", "30 days", "60 days", "Net 30", etc. Return null if not found.
+
+notes: Brief description of goods or services listed. Return null if not found.
+
+Use null for any field not found.`;
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -3839,7 +3856,7 @@ Use null for any field not found. For amount, return only the final grand total 
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5',
+        model: 'claude-sonnet-4-6',
         max_tokens: 1024,
         messages: [{ role: 'user', content: [
           { type: 'image', source: { type: 'base64', media_type: file.type || 'image/jpeg', data: base64 } },
@@ -3895,26 +3912,38 @@ Use null for any field not found. For amount, return only the final grand total 
 function parseScannedDate(raw) {
   if (!raw || raw === 'null') return null;
   const s = String(raw).trim();
-  // Already ISO YYYY-MM-DD (with or without leading zeros)
-  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (iso) return `${iso[1]}-${iso[2].padStart(2,'0')}-${iso[3].padStart(2,'0')}`;
-  // YYYY/MM/DD
-  const ymd = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
-  if (ymd) return `${ymd[1]}-${ymd[2].padStart(2,'0')}-${ymd[3].padStart(2,'0')}`;
-  // DD/MM/YYYY or DD-MM-YYYY (Malaysian)
-  const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (dmy) return `${dmy[3]}-${dmy[2].padStart(2,'0')}-${dmy[1].padStart(2,'0')}`;
-  // Month-name formats e.g. "26 June 2026", "June 26, 2026", "26-Jun-2026"
   const MONTHS = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
-  const mn = s.match(/(\d{1,2})[\s\-]+([A-Za-z]{3,9})[\s\-,]+(\d{4})/);
-  if (mn) {
-    const m = MONTHS[(mn[2].slice(0,3).toLowerCase())];
-    if (m) return `${mn[3]}-${String(m).padStart(2,'0')}-${mn[1].padStart(2,'0')}`;
+  const pad = n => String(n).padStart(2,'0');
+  const valid = (y,m,d) => {
+    const dt = new Date(y, m-1, d);
+    return dt.getFullYear()==y && dt.getMonth()==m-1 && dt.getDate()==d
+      && y >= 2000 && y <= 2100 && m>=1 && m<=12 && d>=1 && d<=31;
+  };
+  // YYYY-MM-DD or YYYY/MM/DD
+  const iso = s.match(/^(\d{4})[\-\/](\d{1,2})[\-\/](\d{1,2})$/);
+  if (iso) {
+    const [,y,m,d] = iso.map(Number);
+    if (valid(y,m,d)) return `${y}-${pad(m)}-${pad(d)}`;
   }
-  const nm = s.match(/([A-Za-z]{3,9})[\s\-]+(\d{1,2})[\s,]+(\d{4})/);
+  // DD/MM/YYYY or DD-MM-YYYY (Malaysian standard — always treat as day/month)
+  const dmy = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+  if (dmy) {
+    const [,d,m,y] = dmy.map(Number);
+    if (valid(y,m,d)) return `${y}-${pad(m)}-${pad(d)}`;
+  }
+  // Month-name: "26 June 2026", "26-Jun-2026", "26/June/2026"
+  const mn = s.match(/(\d{1,2})[\s\-\/]+([A-Za-z]{3,9})[\s\-\/,]+(\d{4})/);
+  if (mn) {
+    const mo = MONTHS[mn[2].slice(0,3).toLowerCase()];
+    const d = Number(mn[1]), y = Number(mn[3]);
+    if (mo && valid(y,mo,d)) return `${y}-${pad(mo)}-${pad(d)}`;
+  }
+  // "June 26, 2026" or "June 26 2026"
+  const nm = s.match(/([A-Za-z]{3,9})[\s\-\/]+(\d{1,2})[\s,]+(\d{4})/);
   if (nm) {
-    const m = MONTHS[(nm[1].slice(0,3).toLowerCase())];
-    if (m) return `${nm[3]}-${String(m).padStart(2,'0')}-${nm[2].padStart(2,'0')}`;
+    const mo = MONTHS[nm[1].slice(0,3).toLowerCase()];
+    const d = Number(nm[2]), y = Number(nm[3]);
+    if (mo && valid(y,mo,d)) return `${y}-${pad(mo)}-${pad(d)}`;
   }
   return null;
 }

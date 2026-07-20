@@ -1787,7 +1787,7 @@ function renderList() {
     const crReq = inv.costReviewReq;
     const canReqCR  = isOwnInv && (!crReq || crReq.status==='rejected');
     const canEditCR = isOwnInv && crReq && crReq.status==='pending';
-    const hasPendingCR = session.role==='management' && crReq && crReq.status==='pending';
+    const hasPendingCR = session && session.role==='management' && crReq && crReq.status==='pending';
     const costRevBtn = canReqCR
       ? `<button class="btn-cost-req" title="Request cost review" onclick="openCostReviewRequest('${inv.id}')">💰📋</button>`
       : canEditCR
@@ -1895,7 +1895,7 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
       ? `<button class="btn-cost-req" onclick="openCostReviewRequest('${inv.id}')">💰📋</button>`
       : (isOwnInvC && crReqC && crReqC.status==='pending')
         ? `<button class="btn-cost-req" onclick="openCostReviewRequest('${inv.id}')">💰✎</button>`
-        : (session.role==='management' && crReqC && crReqC.status==='pending')
+        : (session && session.role==='management' && crReqC && crReqC.status==='pending')
           ? `<button class="btn-cost-review" onclick="openCostReviewMgmt('${inv.id}')">💰⚠</button>`
           : '';
     const showCostC = canEditCost();
@@ -1927,7 +1927,7 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
         ${inv.term && inv.term!=='C.O.D' ? `<span style="color:#666">${inv.term}</span>` : ''}
       </div>
       ${s==='partial' ? `<div class="inv-card-bal">Balance: ${fmtRM(bal)}</div>` : ''}
-      ${(()=>{ if (session.role!=='management') return ''; const tc=totalCost(inv); if(!tc||!tp) return ''; const m=(tp-tc)/tp*100; const c=m<0?'#e94560':m<10?'#e67e22':m<20?'#f39c12':'#5dfc8d'; return `<div style="font-size:11px;margin-top:3px">Margin: <span style="font-weight:700;color:${c}">${m.toFixed(1)}%</span></div>`; })()}
+      ${(()=>{ if (!session || session.role!=='management') return ''; const tc=totalCost(inv); if(!tc||!tp) return ''; const m=(tp-tc)/tp*100; const c=m<0?'#e94560':m<10?'#e67e22':m<20?'#f39c12':'#5dfc8d'; return `<div style="font-size:11px;margin-top:3px">Margin: <span style="font-weight:700;color:${c}">${m.toFixed(1)}%</span></div>`; })()}
       ${acts}
     </div>`;
   });

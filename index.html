@@ -3714,7 +3714,7 @@ function openInvoiceDetail(id) {
           ${cn.reason ? `<span class="inv-detail-pay-note">${cn.reason.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>` : ''}
           ${canIssueCN ? `<button class="btn-cancel" style="padding:2px 8px;font-size:10px;margin-left:auto" onclick="deleteCN('${id}',${idx})">✕</button>` : ''}
         </div>`).join('');
-      const addBtn = canIssueCN ? `<button class="btn-confirm" style="padding:6px 12px;font-size:12px;margin-top:8px" onclick="openCNModal('${id}')">+ Add Credit Note</button>` : '';
+      const addBtn = canIssueCN ? `<button class="btn-confirm" style="padding:6px 12px;font-size:12px;margin-top:8px" onclick="closeInvoiceDetail();openCNModal('${id}')">+ Add Credit Note</button>` : '';
       return `<div class="inv-detail-section">
         <div class="inv-detail-section-label">Credit Notes${cnTotal>0?` <span style="color:#e94560">(Total: -${fmtRM(cnTotal)})</span>`:''}</div>
         ${cns.length ? cnRows : `<div style="color:#555;font-style:italic;font-size:12px">No credit notes.</div>`}

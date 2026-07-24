@@ -321,6 +321,7 @@
   /* Date adjustment */
   .adj-badge{display:inline-block;font-size:9px;font-weight:700;background:#1a3a5c;color:#4fc3f7;border:1px solid #2980b9;border-radius:3px;padding:1px 4px;margin-right:3px;letter-spacing:.3px}
   .adj-pending-badge{display:inline-block;font-size:9px;font-weight:700;background:#3d2600;color:#f39c12;border:1px solid #e67e22;border-radius:3px;padding:1px 4px;letter-spacing:.3px}
+  .cn-badge{display:inline-block;font-size:9px;font-weight:700;background:#3d0010;color:#e94560;border:1px solid #c0392b;border-radius:3px;padding:1px 4px;letter-spacing:.3px}
   .adj-date-box{margin-top:2px;font-size:11px;color:#4fc3f7}
   .btn-adj-req{background:#1a6fa8;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;padding:4px 9px;margin-left:3px;color:#fff}
   .btn-adj-req:hover{filter:brightness(1.2)}
@@ -655,6 +656,37 @@
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeInvoiceModal()">Cancel</button>
       <button class="btn-confirm" onclick="saveInvoice()">Save Invoice</button>
+    </div>
+  </div>
+</div>
+
+<!-- Credit Note Modal -->
+<div class="modal-bg" id="cnModalBg">
+  <div class="modal" style="max-width:460px">
+    <h2>📋 Add Credit Note</h2>
+    <div class="adj-info-box" id="cnModalInfo"></div>
+    <div class="section-divider">Credit Note Details</div>
+    <div class="form-2col">
+      <div class="form-row">
+        <label>CN Number *</label>
+        <input type="text" id="fCnNo" placeholder="e.g. CN-001">
+      </div>
+      <div class="form-row">
+        <label>CN Date *</label>
+        <input type="date" id="fCnDate">
+      </div>
+    </div>
+    <div class="form-row">
+      <label>Amount (RM) *</label>
+      <input type="text" id="fCnAmount" placeholder="0.00" oninput="formatAmountInput(this)">
+    </div>
+    <div class="form-row">
+      <label>Reason *</label>
+      <textarea id="fCnReason" placeholder="Reason for credit note..." style="min-height:80px"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeCNModal()">Cancel</button>
+      <button class="btn-confirm" onclick="saveCN()">Save Credit Note</button>
     </div>
   </div>
 </div>
@@ -1490,6 +1522,8 @@ function persistState() {
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function amountPaid(inv) { return (inv.payments||[]).reduce((s,p) => s+(p.amount||0), 0); }
 function totalPayable(inv) { return (inv.amount||0) + (inv.sst||0); }
+function totalCreditNotes(inv) { return (inv.creditNotes||[]).reduce((s,cn) => s+(cn.amount||0), 0); }
+function effectivePayable(inv) { return Math.max(0, totalPayable(inv) - totalCreditNotes(inv)); }
 function totalCost(inv) {
   if (inv.costItems && inv.costItems.length > 0)
     return inv.costItems.reduce((s, i) => s + (i.amount || 0), 0);
@@ -1497,8 +1531,8 @@ function totalCost(inv) {
 }
 function computeStatus(inv) {
   const paid = amountPaid(inv);
-  const total = totalPayable(inv);
-  if (total > 0 && paid >= total) return 'paid';
+  const total = effectivePayable(inv);
+  if (paid >= total) return 'paid';
   if (paid > 0) return 'partial';
   return 'unpaid';
 }
@@ -1604,10 +1638,10 @@ function renderSummary() {
   let outstanding=0,outN=0,partialTot=0,partialN=0,paidTot=0,paidN=0,totalTot=0;
   invs.forEach(inv => {
     const s = computeStatus(inv);
-    const tp = totalPayable(inv);
-    const bal = tp - amountPaid(inv);
-    totalTot += tp;
-    if (s==='paid') { paidTot += tp; paidN++; }
+    const ep = effectivePayable(inv);
+    const bal = ep - amountPaid(inv);
+    totalTot += totalPayable(inv);
+    if (s==='paid') { paidTot += amountPaid(inv); paidN++; }
     if (s==='partial') { partialTot += Math.max(0,bal); partialN++; outstanding += Math.max(0,bal); outN++; }
     if (s==='unpaid') { outstanding += Math.max(0,bal); outN++; }
   });
@@ -1750,7 +1784,9 @@ function renderList() {
     const badgeS = overdue ? 'overdue' : s;
     const paid = amountPaid(inv);
     const tp = totalPayable(inv);
-    const bal = Math.max(0, tp - paid);
+    const cnTotal = totalCreditNotes(inv);
+    const ep = effectivePayable(inv);
+    const bal = Math.max(0, ep - paid);
     const days = daysSince(inv.invoiceDate);
     const dClass = days === null ? '' : days >= 90 ? 'old' : days >= 60 ? 'warn' : days >= 30 ? 'due' : '';
     const overdueD = overdue ? daysOverdueFromTerm(inv) : 0;
@@ -1826,9 +1862,9 @@ function renderList() {
       <td class="td-agent">${inv.salesman||'—'}</td>
       <td class="td-term" style="color:#666;font-size:11px">${inv.term||'—'}</td>
       <td class="td-days">${daysPill}</td>
-      <td class="td-amount">${fmtRM(tp)}${s==='partial'&&bal>0?`<br><span style="font-size:10px;color:#e67e22">Bal: ${fmtRM(bal)}</span>`:''}</td>
+      <td class="td-amount">${fmtRM(tp)}${cnTotal>0?`<br><span class="cn-badge">CN -${fmtRM(cnTotal)}</span>`:''}${s==='partial'&&bal>0?`<br><span style="font-size:10px;color:#e67e22">Bal: ${fmtRM(bal)}</span>`:''}</td>
       ${hasCostCol ? `<td class="td-cost">${costCell}</td>` : ''}
-      ${hasMarginCol ? (()=>{ const tc=totalCost(inv); if(!tc||!tp) return `<td class="td-margin" style="color:#555;text-align:right">—</td>`; const m=(tp-tc)/tp*100; const c=m<0?'#e94560':m<10?'#e67e22':m<20?'#f39c12':'#5dfc8d'; return `<td class="td-margin" style="text-align:right;font-weight:600;color:${c}">${m.toFixed(1)}%</td>`; })() : ''}
+      ${hasMarginCol ? (()=>{ const tc=totalCost(inv); if(!tc||!ep) return `<td class="td-margin" style="color:#555;text-align:right">—</td>`; const m=(ep-tc)/ep*100; const c=m<0?'#e94560':m<10?'#e67e22':m<20?'#f39c12':'#5dfc8d'; return `<td class="td-margin" style="text-align:right;font-weight:600;color:${c}">${m.toFixed(1)}%</td>`; })() : ''}
       <td class="td-actions">${actions}</td>
     </tr>`;
   });
@@ -1862,7 +1898,9 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
     const badgeS = overdue ? 'overdue' : s;
     const paid = amountPaid(inv);
     const tp = totalPayable(inv);
-    const bal = Math.max(0, tp - paid);
+    const cnTotal = totalCreditNotes(inv);
+    const ep = effectivePayable(inv);
+    const bal = Math.max(0, ep - paid);
     const days = daysSince(inv.invoiceDate);
     const dClass = days === null ? '' : days >= 90 ? 'old' : days >= 60 ? 'warn' : days >= 30 ? 'due' : '';
     const overdueD = overdue ? daysOverdueFromTerm(inv) : 0;
@@ -1927,8 +1965,9 @@ function buildCardsHTML(items, showPay, showEdit, groupByMonth) {
         ${daysPill}
         ${inv.term && inv.term!=='C.O.D' ? `<span style="color:#666">${inv.term}</span>` : ''}
       </div>
+      ${cnTotal>0 ? `<div style="font-size:11px;margin-top:2px"><span class="cn-badge">CN -${fmtRM(cnTotal)}</span></div>` : ''}
       ${s==='partial' ? `<div class="inv-card-bal">Balance: ${fmtRM(bal)}</div>` : ''}
-      ${(()=>{ if (!session || session.role!=='management') return ''; const tc=totalCost(inv); if(!tc||!tp) return ''; const m=(tp-tc)/tp*100; const c=m<0?'#e94560':m<10?'#e67e22':m<20?'#f39c12':'#5dfc8d'; return `<div style="font-size:11px;margin-top:3px">Margin: <span style="font-weight:700;color:${c}">${m.toFixed(1)}%</span></div>`; })()}
+      ${(()=>{ if (!session || session.role!=='management') return ''; const tc=totalCost(inv); if(!tc||!ep) return ''; const m=(ep-tc)/ep*100; const c=m<0?'#e94560':m<10?'#e67e22':m<20?'#f39c12':'#5dfc8d'; return `<div style="font-size:11px;margin-top:3px">Margin: <span style="font-weight:700;color:${c}">${m.toFixed(1)}%</span></div>`; })()}
       ${acts}
     </div>`;
   });
@@ -2195,6 +2234,50 @@ function deletePayment(invId, idx) {
 function closePaymentModal() {
   document.getElementById('paymentModalBg').classList.remove('open');
   paymentId=null;
+}
+
+// ---- Credit Notes ----
+let cnInvId = null;
+function openCNModal(id) {
+  cnInvId = id;
+  const inv = state.invoices.find(i => i.id === id);
+  if (!inv) return;
+  document.getElementById('cnModalInfo').textContent = `${inv.invoiceNo||'—'} · ${inv.customer||'—'}`;
+  document.getElementById('fCnNo').value = '';
+  document.getElementById('fCnDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('fCnAmount').value = '';
+  document.getElementById('fCnReason').value = '';
+  document.getElementById('cnModalBg').classList.add('open');
+}
+function closeCNModal() {
+  document.getElementById('cnModalBg').classList.remove('open');
+  cnInvId = null;
+}
+async function saveCN() {
+  const cnNo = document.getElementById('fCnNo').value.trim();
+  const cnDate = document.getElementById('fCnDate').value;
+  const cnAmtRaw = document.getElementById('fCnAmount').value.replace(/,/g,'');
+  const cnReason = document.getElementById('fCnReason').value.trim();
+  const cnAmount = parseFloat(cnAmtRaw);
+  if (!cnNo || !cnDate || !cnAmount || cnAmount <= 0 || !cnReason) {
+    alert('Please fill in all fields.'); return;
+  }
+  const inv = state.invoices.find(i => i.id === cnInvId);
+  if (!inv) return;
+  const cns = [...(inv.creditNotes || [])];
+  cns.push({ cnNo, date: cnDate, amount: cnAmount, reason: cnReason, addedBy: session.username, addedAt: Date.now() });
+  await invoicesRef.child(cnInvId).update({ creditNotes: cns });
+  closeCNModal();
+  openInvoiceDetail(cnInvId);
+}
+async function deleteCN(invId, idx) {
+  if (!confirm('Remove this credit note?')) return;
+  const inv = state.invoices.find(i => i.id === invId);
+  if (!inv) return;
+  const cns = [...(inv.creditNotes || [])];
+  cns.splice(idx, 1);
+  await invoicesRef.child(invId).update({ creditNotes: cns.length ? cns : null });
+  openInvoiceDetail(invId);
 }
 
 // ---- Commission Report ----
@@ -3527,8 +3610,10 @@ function openInvoiceDetail(id) {
   const overdue = isOverdue(inv);
   const badgeS = overdue ? 'overdue' : s;
   const tp = totalPayable(inv);
+  const cnTotal = totalCreditNotes(inv);
+  const ep = effectivePayable(inv);
   const paid = amountPaid(inv);
-  const bal = Math.max(0, tp - paid);
+  const bal = Math.max(0, ep - paid);
   const cost = totalCost(inv);
   const hasCost = !!(inv.costItems && inv.costItems.length > 0) || inv.cost > 0;
   const profit = hasCost ? Math.max(0, tp - cost) : null;
@@ -3556,6 +3641,8 @@ function openInvoiceDetail(id) {
     { label: 'Amount', val: fmtRM(inv.amount || 0), color: '' },
     inv.sst ? { label: 'SST (6%)', val: fmtRM(inv.sst), color: '' } : null,
     { label: 'Total', val: fmtRM(tp), color: '#f39c12' },
+    cnTotal > 0 ? { label: 'Credit Notes', val: `-${fmtRM(cnTotal)}`, color: '#e94560' } : null,
+    cnTotal > 0 ? { label: 'Net Payable', val: fmtRM(ep), color: '#f39c12' } : null,
     s !== 'paid' ? { label: 'Balance Due', val: fmtRM(bal), color: '#4fc3f7' } : null,
     s === 'paid' || s === 'partial' ? { label: 'Collected', val: fmtRM(paid), color: '#5dfc8d' } : null,
   ].filter(Boolean);
@@ -3616,6 +3703,24 @@ function openInvoiceDetail(id) {
     </div>
     ${costHtml}
     ${notesHtml}
+    ${(()=>{
+      const cns = inv.creditNotes || [];
+      const canIssueCN = session && session.role === 'account';
+      const cnRows = cns.map((cn, idx) => `
+        <div class="inv-detail-pay-row">
+          <span class="inv-detail-pay-date">${fmtDate(cn.date)}</span>
+          <span class="cn-badge" style="font-size:10px">${cn.cnNo||'—'}</span>
+          <span class="inv-detail-pay-amt" style="color:#e94560">-${fmtRM(cn.amount)}</span>
+          ${cn.reason ? `<span class="inv-detail-pay-note">${cn.reason.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>` : ''}
+          ${canIssueCN ? `<button class="btn-cancel" style="padding:2px 8px;font-size:10px;margin-left:auto" onclick="deleteCN('${id}',${idx})">✕</button>` : ''}
+        </div>`).join('');
+      const addBtn = canIssueCN ? `<button class="btn-confirm" style="padding:6px 12px;font-size:12px;margin-top:8px" onclick="openCNModal('${id}')">+ Add Credit Note</button>` : '';
+      return `<div class="inv-detail-section">
+        <div class="inv-detail-section-label">Credit Notes${cnTotal>0?` <span style="color:#e94560">(Total: -${fmtRM(cnTotal)})</span>`:''}</div>
+        ${cns.length ? cnRows : `<div style="color:#555;font-style:italic;font-size:12px">No credit notes.</div>`}
+        ${addBtn}
+      </div>`;
+    })()}
     <div class="inv-detail-section">
       <div class="inv-detail-section-label">Payment History</div>
       ${payHtml}

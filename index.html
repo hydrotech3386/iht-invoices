@@ -2253,7 +2253,7 @@ function closeCNModal() {
   document.getElementById('cnModalBg').classList.remove('open');
   cnInvId = null;
 }
-async function saveCN() {
+function saveCN() {
   const cnNo = document.getElementById('fCnNo').value.trim();
   const cnDate = document.getElementById('fCnDate').value;
   const cnAmtRaw = document.getElementById('fCnAmount').value.replace(/,/g,'');
@@ -2264,19 +2264,19 @@ async function saveCN() {
   }
   const inv = state.invoices.find(i => i.id === cnInvId);
   if (!inv) return;
-  const cns = [...(inv.creditNotes || [])];
-  cns.push({ cnNo, date: cnDate, amount: cnAmount, reason: cnReason, addedBy: session.username, addedAt: Date.now() });
-  await invoicesRef.child(cnInvId).update({ creditNotes: cns });
+  const savedId = cnInvId;
+  if (!Array.isArray(inv.creditNotes)) inv.creditNotes = [];
+  inv.creditNotes.push({ cnNo, date: cnDate, amount: cnAmount, reason: cnReason, addedBy: session.username, addedAt: Date.now() });
+  persistState(); renderSummary(); renderList();
   closeCNModal();
-  openInvoiceDetail(cnInvId);
+  openInvoiceDetail(savedId);
 }
-async function deleteCN(invId, idx) {
+function deleteCN(invId, idx) {
   if (!confirm('Remove this credit note?')) return;
   const inv = state.invoices.find(i => i.id === invId);
   if (!inv) return;
-  const cns = [...(inv.creditNotes || [])];
-  cns.splice(idx, 1);
-  await invoicesRef.child(invId).update({ creditNotes: cns.length ? cns : null });
+  inv.creditNotes.splice(idx, 1);
+  persistState(); renderSummary(); renderList();
   openInvoiceDetail(invId);
 }
 

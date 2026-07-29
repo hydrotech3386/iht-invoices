@@ -734,7 +734,8 @@
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
         <div style="flex:2;min-width:130px">
           <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">Customer Name</label>
-          <input id="cacheNewCustomer" placeholder="e.g. ABC Sdn Bhd" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px;box-sizing:border-box">
+          <input id="cacheNewCustomer" list="cacheCustomerSuggestions" placeholder="Type or pick a customer…" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px;box-sizing:border-box">
+          <datalist id="cacheCustomerSuggestions"></datalist>
         </div>
         <div style="min-width:90px">
           <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">City / Area</label>
@@ -744,8 +745,10 @@
           <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">One-way km</label>
           <input id="cacheNewKm" type="number" min="0" placeholder="0" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px;box-sizing:border-box">
         </div>
+        <button onclick="openMapPickerForCache()" title="Find on map" style="background:#1a3a6a;border:none;border-radius:4px;color:#fff;padding:6px 12px;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0">📍 Map</button>
         <button onclick="addNewCacheEntry()" style="background:#1a6a3a;border:none;border-radius:4px;color:#fff;padding:6px 14px;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0">+ Add</button>
       </div>
+      <div style="font-size:10px;color:#666;margin-top:6px">📍 Map searches the customer name and fills the distance for you.</div>
     </div>
     <div style="padding:8px 16px 10px;border-top:1px solid #1a3a6a;display:flex;justify-content:space-between;align-items:center">
       <button onclick="clearAllCache()" style="background:none;border:1px solid #e74c3c;color:#e74c3c;border-radius:5px;padding:6px 14px;font-size:12px;cursor:pointer">Clear All</button>
@@ -2885,7 +2888,24 @@ function saveTransportCache(cache) {
 // ---- Cache Manager ----
 function openCacheManager() {
   renderCacheManagerList();
+  populateCacheCustomerList();
   document.getElementById('cacheManagerBg').classList.add('open');
+}
+// Customer names from existing invoices, so entries can be picked instead of typed.
+// Already-cached customers are listed last and flagged, so it's obvious which
+// ones still need a distance.
+function populateCacheCustomerList() {
+  const dl = document.getElementById('cacheCustomerSuggestions');
+  if (!dl) return;
+  const cache = getTransportCache();
+  const names = [...new Set((state.invoices || []).map(i => i.customer).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+  const uncached = names.filter(n => !cache[n.toLowerCase().trim()]);
+  const cached = names.filter(n => cache[n.toLowerCase().trim()]);
+  const esc = s => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  dl.innerHTML =
+    uncached.map(n => `<option value="${esc(n)}">`).join('') +
+    cached.map(n => `<option value="${esc(n)}" label="already cached">`).join('');
 }
 function addNewCacheEntry() {
   const customer = document.getElementById('cacheNewCustomer').value.trim();
@@ -2894,12 +2914,15 @@ function addNewCacheEntry() {
   if (!customer) { alert('Customer name is required.'); return; }
   if (!km) { alert('Enter a distance in km.'); return; }
   const cache = getTransportCache();
-  cache[customer.toLowerCase().trim()] = { km, rate: getTransportRate(), city: city || customer, cachedAt: Date.now() };
+  const key = customer.toLowerCase().trim();
+  if (cache[key] && !confirm(`"${customer}" is already cached at ${cache[key].km} km.\nReplace it with ${km} km?`)) return;
+  cache[key] = { km, rate: getTransportRate(), city: city || customer, cachedAt: Date.now() };
   saveTransportCache(cache);
   document.getElementById('cacheNewCustomer').value = '';
   document.getElementById('cacheNewCity').value = '';
   document.getElementById('cacheNewKm').value = '';
   renderCacheManagerList();
+  populateCacheCustomerList();
 }
 function closeCacheManager() {
   document.getElementById('cacheManagerBg').classList.remove('open');
@@ -2977,6 +3000,7 @@ function renderCacheManagerList() {
       delete cache2[k];
       saveTransportCache(cache2);
       renderCacheManagerList();
+      populateCacheCustomerList();
     }
   };
 }
@@ -3165,6 +3189,7 @@ const IPOH_OFFICE = { lat: 4.5635, lng: 101.1095 }; // 18, Hala Rapat Baru 20, K
 function getOffice() { return IPOH_OFFICE; }
 let mapPicker = null, mapMarkerPin = null, mapPickerKm = 0, mapPickerTarget = 'transport';
 let mapPickerLat = 0, mapPickerLng = 0, mapPickerTripInvId = null;
+let mapPickerPlaceLabel = ''; // name/address of the last picked search result, if any
 
 function haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371;
@@ -3336,7 +3361,7 @@ function selectMapSearchResult(i) {
   const lat = parseFloat(r.lat), lng = parseFloat(r.lon);
   if (_useGoogleMap && gMap) { gMap.panTo({ lat, lng }); gMap.setZoom(16); }
   else if (mapPicker) mapPicker.setView([lat, lng], 16);
-  onMapPickerClick(lat, lng);
+  onMapPickerClick(lat, lng, r.display_name);
 }
 
 let officeMarker = null;
@@ -3422,9 +3447,10 @@ function openMapPicker(target) {
   }, 150);
 }
 
-async function onMapPickerClick(lat, lng) {
+async function onMapPickerClick(lat, lng, placeLabel) {
   if (mapPickerMode === 'route') return;
   mapPickerLat = lat; mapPickerLng = lng;
+  mapPickerPlaceLabel = placeLabel || '';
   _clearMapOverlays();
   if (_useGoogleMap) {
     gMapMarker = new google.maps.Marker({ position: { lat, lng }, map: gMap });
@@ -3485,8 +3511,31 @@ function confirmMapLocation() {
     const label = document.getElementById('mapPickerInfo').textContent;
     tripInvLocations[mapPickerTripInvId] = { lat: mapPickerLat, lng: mapPickerLng, label, km: mapPickerKm };
     renderTripRouteOrder();
+  } else if (mapPickerTarget === 'cache') {
+    document.getElementById('cacheNewKm').value = mapPickerKm;
+    // Fill City / Area from the picked place if the user left it blank
+    const cityEl = document.getElementById('cacheNewCity');
+    if (!cityEl.value.trim() && mapPickerPlaceLabel) {
+      const labelUp = mapPickerPlaceLabel.toUpperCase();
+      const hit = MY_CITIES.find(c => labelUp.includes(c.toUpperCase()));
+      if (hit) cityEl.value = hit;
+    }
   }
   closeMapPicker();
+}
+
+// Map picker launched from the cache manager's "Add New Entry" row.
+// Pre-seeds the search with whatever customer name has been typed.
+function openMapPickerForCache() {
+  const name = document.getElementById('cacheNewCustomer').value.trim();
+  openMapPicker('cache');
+  document.getElementById('mapPickerTitle').textContent = '📍 Find Customer Location';
+  if (name) {
+    setTimeout(() => {
+      document.getElementById('mapSearchInput').value = name;
+      doMapSearch();
+    }, 250);
+  }
 }
 
 function openMapPickerForTripInv(invId) {

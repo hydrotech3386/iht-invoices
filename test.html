@@ -750,8 +750,7 @@
       </div>
       <div style="font-size:10px;color:#666;margin-top:6px">📍 Map searches the customer name and fills the distance for you.</div>
     </div>
-    <div style="padding:8px 16px 10px;border-top:1px solid #1a3a6a;display:flex;justify-content:space-between;align-items:center">
-      <button onclick="clearAllCache()" style="background:none;border:1px solid #e74c3c;color:#e74c3c;border-radius:5px;padding:6px 14px;font-size:12px;cursor:pointer">Clear All</button>
+    <div style="padding:8px 16px 10px;border-top:1px solid #1a3a6a;display:flex;justify-content:flex-end;align-items:center">
       <button class="btn-cancel" onclick="closeCacheManager()">Close</button>
     </div>
   </div>
@@ -3003,11 +3002,6 @@ function renderCacheManagerList() {
       populateCacheCustomerList();
     }
   };
-}
-function clearAllCache() {
-  if (!confirm('Clear ALL cached transport distances? This cannot be undone.')) return;
-  localStorage.removeItem(TRANSPORT_CACHE_KEY);
-  renderCacheManagerList();
 }
 function initTransportCalc(customerName) {
   currentCostCustomer = customerName || '';

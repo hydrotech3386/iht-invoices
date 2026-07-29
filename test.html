@@ -3043,26 +3043,26 @@ async function lookupDistance() {
   const gKey = getGoogleKey();
   if (gKey) {
     try {
-      const gResp = await fetch('https://places.googleapis.com/v1/places:searchText', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': gKey, 'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location' },
-        body: JSON.stringify({ textQuery: currentCostCustomer + ' Malaysia', regionCode: 'MY', maxResultCount: 1 })
-      });
+      const gUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(currentCostCustomer + ' Malaysia')}&key=${gKey}`;
+      const gResp = await fetch(gUrl);
       const gData = await gResp.json();
-      const place = gData.places?.[0];
-      if (place?.location) {
-        const { latitude: lat, longitude: lon } = place.location;
-        const km = await routeToPoint(lat, lon);
+      if (gData.status === 'OK' && gData.results?.[0]?.geometry?.location) {
+        const { lat, lng } = gData.results[0].geometry.location;
+        const km = await routeToPoint(lat, lng);
         if (km !== null) {
-          const label = place.formattedAddress || place.displayName?.text || currentCostCustomer;
+          const label = gData.results[0].formatted_address || gData.results[0].name || currentCostCustomer;
           document.getElementById('fTransportKm').value = km;
           hintEl.textContent = `🗺 Google: ${label} — ${km} km one-way. Click "+ Add to Items" to save.`;
           updateTransportCalc();
           btn.textContent = '🔍 Find'; btn.disabled = false;
           return;
         }
+      } else if (gData.status && gData.status !== 'ZERO_RESULTS') {
+        hintEl.textContent = `Google error: ${gData.status} — trying fallback…`;
       }
-    } catch(e) {}
+    } catch(e) {
+      hintEl.textContent = `Google request failed (${e.message}) — trying fallback…`;
+    }
   }
 
   // Step 2: Nominatim with full company name

@@ -722,9 +722,33 @@
       <div style="font-weight:700;font-size:15px;color:#fff">🗂 Transport Distance Cache</div>
       <button onclick="closeCacheManager()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:20px;line-height:1">✕</button>
     </div>
-    <div style="padding:8px 14px 4px;font-size:11px;color:#888">Distances auto-saved when you use Transport Cost. Edit or delete any entry.</div>
-    <div id="cacheManagerList" style="max-height:380px;overflow-y:auto;padding:6px 14px 14px"></div>
-    <div style="padding:10px 16px;border-top:1px solid #1a3a6a;display:flex;justify-content:space-between;align-items:center">
+    <div style="padding:8px 14px 4px;font-size:11px;color:#888">Distances auto-saved when you use Transport Cost. Edit, delete, or add entries manually.</div>
+    <div id="cacheManagerList" style="max-height:300px;overflow-y:auto;padding:6px 14px 14px"></div>
+    <div style="padding:10px 14px;border-top:1px solid #1a3a6a;background:#071628">
+      <div style="font-size:11px;color:#4fc3f7;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">+ Add New Entry</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
+        <div style="flex:2;min-width:130px">
+          <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">Customer Name</label>
+          <input id="cacheNewCustomer" placeholder="e.g. ABC Sdn Bhd" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px;box-sizing:border-box">
+        </div>
+        <div style="min-width:90px">
+          <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">City / Area</label>
+          <input id="cacheNewCity" placeholder="e.g. Ipoh" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px;box-sizing:border-box">
+        </div>
+        <div style="min-width:70px">
+          <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">One-way km</label>
+          <input id="cacheNewKm" type="number" min="0" placeholder="0" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px;box-sizing:border-box">
+        </div>
+        <div style="min-width:80px">
+          <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">Vehicle</label>
+          <select id="cacheNewVehicle" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px">
+            <option>Lorry</option><option>Van</option><option>Maxus</option>
+          </select>
+        </div>
+        <button onclick="addNewCacheEntry()" style="background:#1a6a3a;border:none;border-radius:4px;color:#fff;padding:6px 14px;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0">+ Add</button>
+      </div>
+    </div>
+    <div style="padding:8px 16px 10px;border-top:1px solid #1a3a6a;display:flex;justify-content:space-between;align-items:center">
       <button onclick="clearAllCache()" style="background:none;border:1px solid #e74c3c;color:#e74c3c;border-radius:5px;padding:6px 14px;font-size:12px;cursor:pointer">Clear All</button>
       <button class="btn-cancel" onclick="closeCacheManager()">Close</button>
     </div>
@@ -2888,6 +2912,23 @@ function saveTransportCache(cache) {
 function openCacheManager() {
   renderCacheManagerList();
   document.getElementById('cacheManagerBg').classList.add('open');
+}
+function addNewCacheEntry() {
+  const customer = document.getElementById('cacheNewCustomer').value.trim();
+  const city = document.getElementById('cacheNewCity').value.trim();
+  const km = parseFloat(document.getElementById('cacheNewKm').value) || 0;
+  const vehicle = document.getElementById('cacheNewVehicle').value;
+  if (!customer) { alert('Customer name is required.'); return; }
+  if (!km) { alert('Enter a distance in km.'); return; }
+  const rates = getVehicleRates();
+  const rate = rates[vehicle] || 1.00;
+  const cache = getTransportCache();
+  cache[customer.toLowerCase().trim()] = { km, rate, vehicle, city: city || customer, cachedAt: Date.now() };
+  saveTransportCache(cache);
+  document.getElementById('cacheNewCustomer').value = '';
+  document.getElementById('cacheNewCity').value = '';
+  document.getElementById('cacheNewKm').value = '';
+  renderCacheManagerList();
 }
 function closeCacheManager() {
   document.getElementById('cacheManagerBg').classList.remove('open');

@@ -822,7 +822,7 @@
         <input type="number" id="fTransportKm" placeholder="0" min="0" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px" oninput="updateTransportCalc()">
       </div>
       <div style="display:flex;flex-direction:column;gap:4px">
-        <button id="aiEstimateBtn" class="btn-re" style="padding:7px 10px;font-size:12px;white-space:nowrap" onclick="aiEstimateDistance()">🤖 AI</button>
+        <button id="aiEstimateBtn" class="btn-re" style="padding:7px 10px;font-size:12px;white-space:nowrap" onclick="lookupDistance()">🔍 Find</button>
         <button class="btn-re" style="padding:7px 10px;font-size:12px;white-space:nowrap" onclick="openMapPicker()">📍 Map</button>
       </div>
     </div>
@@ -2977,7 +2977,7 @@ function initTransportCalc(customerName) {
   } else {
     kmEl.value = '';
     cacheEl.style.display = 'none';
-    hintEl.textContent = 'No cached distance — enter manually, use 🤖 AI or 📍 Map.';
+    hintEl.textContent = 'No cached distance — click 🔍 Find, use 📍 Map, or enter km manually.';
   }
   updateTransportCalc();
 }
@@ -2994,43 +2994,76 @@ function updateTransportCalc() {
   const { rate } = getVehicleInfo('fTransportVehicle');
   document.getElementById('transportCalcAmt').textContent = fmtRM(Math.round(km * 2 * rate * 100) / 100);
 }
-async function aiEstimateDistance() {
-  let key = getClaudeKey();
-  if (!key) {
-    key = prompt('Paste your Claude API key to use AI estimate (saved locally for this test session):');
-    if (!key || !key.trim()) return;
-    localStorage.setItem(CLAUDE_KEY_STORE, key.trim());
-    key = key.trim();
-  }
+async function lookupDistance() {
   const btn = document.getElementById('aiEstimateBtn');
+  const hintEl = document.getElementById('transportCityHint');
   btn.textContent = '⏳'; btn.disabled = true;
-  document.getElementById('transportCityHint').textContent = 'Asking AI…';
-  try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-allow-browser': 'true' },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 60,
-        messages: [{ role: 'user', content: `Malaysian company: "${currentCostCustomer}". Estimate the driving distance by road in km from Ipoh, Perak (specifically from Kawasan Perindustrian Ringan Kinta Jaya, 31350 Ipoh) to their most likely office or site location. Reply ONLY in this exact format: CITY: [city name], KM: [number]. If unknown reply: UNKNOWN` }]
-      })
-    });
-    const data = await resp.json();
-    const text = (data.content?.[0]?.text || '').trim();
-    const cityM = text.match(/CITY:\s*([^,\n]+)/i);
-    const kmM = text.match(/KM:\s*(\d+)/i);
-    if (cityM && kmM) {
-      const city = cityM[1].trim(), km = parseInt(kmM[1]);
-      document.getElementById('fTransportKm').value = km;
-      document.getElementById('transportCityHint').textContent = `AI estimate: ${city}, ~${km} km. Edit if needed, then click "+ Add to Items".`;
-      updateTransportCalc();
-    } else {
-      document.getElementById('transportCityHint').textContent = 'AI could not estimate. Please enter distance manually.';
-    }
-  } catch(e) {
-    document.getElementById('transportCityHint').textContent = 'AI lookup failed. Enter distance manually.';
+  const office = getOffice();
+
+  async function routeToPoint(lat, lon) {
+    const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${office.lng},${office.lat};${lon},${lat}?overview=false`);
+    const d = await r.json();
+    if (d.code === 'Ok' && d.routes?.[0]) return Math.round(d.routes[0].distance / 100) / 10;
+    return null;
   }
-  btn.textContent = '🤖 AI'; btn.disabled = false;
+
+  // Step 1: Try Nominatim with company name directly
+  hintEl.textContent = 'Searching for company…';
+  try {
+    const q = encodeURIComponent(currentCostCustomer + ' Malaysia');
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=3&countrycodes=my`, { headers: { 'Accept-Language': 'en' } });
+    const hits = await r.json();
+    if (hits && hits.length) {
+      const { lat, lon, display_name } = hits[0];
+      const km = await routeToPoint(lat, lon);
+      if (km !== null) {
+        const city = display_name.split(',').slice(0,2).join(',').trim();
+        document.getElementById('fTransportKm').value = km;
+        hintEl.textContent = `📍 Found: ${city} — ${km} km one-way. Click "+ Add to Items" to save.`;
+        updateTransportCalc();
+        btn.textContent = '🔍 Find'; btn.disabled = false;
+        return;
+      }
+    }
+  } catch(e) {}
+
+  // Step 2: AI identifies city → Nominatim → OSRM
+  hintEl.textContent = 'Not found directly — asking AI for city…';
+  const key = getClaudeKey();
+  if (key) {
+    try {
+      const aiResp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-allow-browser': 'true' },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 20,
+          messages: [{ role: 'user', content: `Malaysian company: "${currentCostCustomer}". What city/town in Malaysia is this company in? Reply with ONLY the city name and state e.g. "Ipoh, Perak" or "Johor Bahru, Johor". If unknown reply: UNKNOWN` }]
+        })
+      });
+      const aiData = await aiResp.json();
+      const city = (aiData.content?.[0]?.text || '').trim().replace(/^["']|["']$/g, '');
+      if (city && !/unknown/i.test(city)) {
+        const q2 = encodeURIComponent(city + ', Malaysia');
+        const r2 = await fetch(`https://nominatim.openstreetmap.org/search?q=${q2}&format=json&limit=1&countrycodes=my`, { headers: { 'Accept-Language': 'en' } });
+        const hits2 = await r2.json();
+        if (hits2 && hits2.length) {
+          const { lat, lon } = hits2[0];
+          const km = await routeToPoint(lat, lon);
+          if (km !== null) {
+            document.getElementById('fTransportKm').value = km;
+            hintEl.textContent = `🤖 AI found city: ${city} — ${km} km one-way. Edit if needed, then click "+ Add to Items".`;
+            updateTransportCalc();
+            btn.textContent = '🔍 Find'; btn.disabled = false;
+            return;
+          }
+        }
+      }
+    } catch(e) {}
+  }
+
+  hintEl.textContent = 'Could not determine location. Use 📍 Map pin or enter km manually.';
+  btn.textContent = '🔍 Find'; btn.disabled = false;
 }
 function addTransportToCost() {
   const km = parseFloat(document.getElementById('fTransportKm').value) || 0;
@@ -3052,11 +3085,11 @@ function addTransportToCost() {
   _updateCostTotal();
   // Cache confirmed distance + vehicle
   const hint = document.getElementById('transportCityHint').textContent;
-  const cityMatch = hint.match(/AI estimate:\s*([^,~]+)/);
+  const cityMatch = hint.match(/(?:Found|found city):\s*([^—\n]+?)(?:\s*—|\s*,\s*\d)/);
   const city = cityMatch ? cityMatch[1].trim() : currentCostCustomer;
   const cache = getTransportCache();
   cache[currentCostCustomer.toLowerCase().trim()] = { km, rate, vehicle: vehicleName, city, cachedAt: Date.now() };
-  localStorage.setItem(TRANSPORT_CACHE_KEY, JSON.stringify(cache));
+  saveTransportCache(cache);
   document.getElementById('transportCacheInfo').textContent = `✓ Cached: ${city}, ${km} km — ${vehicleName}`;
   document.getElementById('transportCacheInfo').style.display = 'block';
   document.getElementById('transportCityHint').textContent = `✓ Transport (${vehicleName}) added to cost items.`;

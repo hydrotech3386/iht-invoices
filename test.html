@@ -2994,6 +2994,17 @@ function updateTransportCalc() {
   const { rate } = getVehicleInfo('fTransportVehicle');
   document.getElementById('transportCalcAmt').textContent = fmtRM(Math.round(km * 2 * rate * 100) / 100);
 }
+const MY_CITIES = [
+  'Ipoh','Taiping','Teluk Intan','Manjung','Kampar','Batu Gajah','Lumut','Bidor',
+  'Kuala Lumpur','KL','Petaling Jaya','PJ','Subang','Shah Alam','Klang','Rawang',
+  'Puchong','Cheras','Ampang','Kepong','Damansara','Kajang','Bangi','Selayang',
+  'Penang','Georgetown','Butterworth','Bayan Lepas','Kulim','Sungai Petani','Alor Setar',
+  'Johor Bahru','JB','Skudai','Batu Pahat','Muar','Kluang','Kota Tinggi',
+  'Seremban','Nilai','Port Dickson','Melaka','Malacca',
+  'Kuantan','Temerloh','Bentong','Raub',
+  'Kota Kinabalu','Sandakan','Tawau','Lahad Datu',
+  'Kuching','Miri','Sibu','Bintulu'
+];
 async function lookupDistance() {
   const btn = document.getElementById('aiEstimateBtn');
   const hintEl = document.getElementById('transportCityHint');
@@ -3001,36 +3012,69 @@ async function lookupDistance() {
   const office = getOffice();
 
   async function routeToPoint(lat, lon) {
-    const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${office.lng},${office.lat};${lon},${lat}?overview=false`);
-    const d = await r.json();
-    if (d.code === 'Ok' && d.routes?.[0]) return Math.round(d.routes[0].distance / 100) / 10;
+    try {
+      const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${office.lng},${office.lat};${lon},${lat}?overview=false`);
+      const d = await r.json();
+      if (d.code === 'Ok' && d.routes?.[0]) return Math.round(d.routes[0].distance / 100) / 10;
+    } catch(e) {}
     return null;
   }
+  async function nominatimSearch(q) {
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=3&countrycodes=my`, { headers: { 'Accept-Language': 'en' } });
+      return await r.json();
+    } catch(e) { return []; }
+  }
+  async function geocodeAndRoute(cityStr, label) {
+    const hits = await nominatimSearch(cityStr + ', Malaysia');
+    if (!hits || !hits.length) return false;
+    const { lat, lon } = hits[0];
+    const km = await routeToPoint(lat, lon);
+    if (km === null) return false;
+    document.getElementById('fTransportKm').value = km;
+    hintEl.textContent = `${label}: ${cityStr} — ${km} km one-way. Click "+ Add to Items" to save.`;
+    updateTransportCalc();
+    btn.textContent = '🔍 Find'; btn.disabled = false;
+    return true;
+  }
 
-  // Step 1: Try Nominatim with company name directly
-  hintEl.textContent = 'Searching for company…';
-  try {
-    const q = encodeURIComponent(currentCostCustomer + ' Malaysia');
-    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=3&countrycodes=my`, { headers: { 'Accept-Language': 'en' } });
-    const hits = await r.json();
-    if (hits && hits.length) {
-      const { lat, lon, display_name } = hits[0];
-      const km = await routeToPoint(lat, lon);
-      if (km !== null) {
-        const city = display_name.split(',').slice(0,2).join(',').trim();
-        document.getElementById('fTransportKm').value = km;
-        hintEl.textContent = `📍 Found: ${city} — ${km} km one-way. Click "+ Add to Items" to save.`;
-        updateTransportCalc();
-        btn.textContent = '🔍 Find'; btn.disabled = false;
-        return;
-      }
+  // Step 1: Nominatim with full company name
+  hintEl.textContent = 'Searching…';
+  const hits1 = await nominatimSearch(currentCostCustomer + ' Malaysia');
+  if (hits1 && hits1.length) {
+    const { lat, lon, display_name } = hits1[0];
+    const km = await routeToPoint(lat, lon);
+    if (km !== null) {
+      const city = display_name.split(',').slice(0,2).join(',').trim();
+      document.getElementById('fTransportKm').value = km;
+      hintEl.textContent = `📍 Found: ${city} — ${km} km one-way. Click "+ Add to Items" to save.`;
+      updateTransportCalc();
+      btn.textContent = '🔍 Find'; btn.disabled = false;
+      return;
     }
-  } catch(e) {}
+  }
 
-  // Step 2: AI identifies city → Nominatim → OSRM
-  hintEl.textContent = 'Not found directly — asking AI for city…';
-  const key = getClaudeKey();
+  // Step 2: Extract city from name — parentheses like (IPOH), or known city keywords
+  let extractedCity = null;
+  const parenMatch = currentCostCustomer.match(/\(([A-Z][A-Z\s]{1,20})\)/);
+  if (parenMatch) extractedCity = parenMatch[1].trim();
+  if (!extractedCity) {
+    const nameUp = currentCostCustomer.toUpperCase();
+    extractedCity = MY_CITIES.find(c => nameUp.includes(c.toUpperCase())) || null;
+  }
+  if (extractedCity) {
+    hintEl.textContent = `Found city in name: ${extractedCity} — routing…`;
+    if (await geocodeAndRoute(extractedCity, '📍 City from name')) return;
+  }
+
+  // Step 3: AI identifies city → Nominatim → OSRM
+  let key = getClaudeKey();
+  if (!key) {
+    key = prompt('No Claude API key found.\nPaste your key to enable AI city lookup (saved for this session):');
+    if (key && key.trim()) { localStorage.setItem(CLAUDE_KEY_STORE, key.trim()); key = key.trim(); }
+  }
   if (key) {
+    hintEl.textContent = 'Asking AI for city…';
     try {
       const aiResp = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -3038,26 +3082,13 @@ async function lookupDistance() {
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 20,
-          messages: [{ role: 'user', content: `Malaysian company: "${currentCostCustomer}". What city/town in Malaysia is this company in? Reply with ONLY the city name and state e.g. "Ipoh, Perak" or "Johor Bahru, Johor". If unknown reply: UNKNOWN` }]
+          messages: [{ role: 'user', content: `Malaysian company: "${currentCostCustomer}". What city/town in Malaysia? Reply ONLY city and state e.g. "Ipoh, Perak". If unknown: UNKNOWN` }]
         })
       });
       const aiData = await aiResp.json();
       const city = (aiData.content?.[0]?.text || '').trim().replace(/^["']|["']$/g, '');
       if (city && !/unknown/i.test(city)) {
-        const q2 = encodeURIComponent(city + ', Malaysia');
-        const r2 = await fetch(`https://nominatim.openstreetmap.org/search?q=${q2}&format=json&limit=1&countrycodes=my`, { headers: { 'Accept-Language': 'en' } });
-        const hits2 = await r2.json();
-        if (hits2 && hits2.length) {
-          const { lat, lon } = hits2[0];
-          const km = await routeToPoint(lat, lon);
-          if (km !== null) {
-            document.getElementById('fTransportKm').value = km;
-            hintEl.textContent = `🤖 AI found city: ${city} — ${km} km one-way. Edit if needed, then click "+ Add to Items".`;
-            updateTransportCalc();
-            btn.textContent = '🔍 Find'; btn.disabled = false;
-            return;
-          }
-        }
+        if (await geocodeAndRoute(city, '🤖 AI')) return;
       }
     } catch(e) {}
   }

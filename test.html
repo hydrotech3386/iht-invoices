@@ -3194,35 +3194,16 @@ async function doMapSearch() {
   if (!q) { resultsEl.style.display = 'none'; return; }
   resultsEl.style.display = 'block';
   resultsEl.innerHTML = '<div style="padding:8px 12px;color:#aaa;font-size:12px">Searching…</div>';
-  const gKey = getGoogleKey();
   try {
-    let results = [];
-    if (gKey) {
-      // Google Places Text Search (REST — no billing/Maps JS needed, just Places API)
-      const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(q + ' Malaysia')}&key=${gKey}`;
-      const resp = await fetch(url);
-      const data = await resp.json();
-      if (data.status === 'OK' && data.results?.length) {
-        results = data.results.map(r => ({
-          lat: r.geometry.location.lat, lon: r.geometry.location.lng,
-          display_name: r.name + (r.formatted_address ? ' — ' + r.formatted_address : '')
-        }));
-      } else if (data.status && data.status !== 'ZERO_RESULTS') {
-        // Google error — fall through to Nominatim
-      }
-    }
-    if (!results.length) {
-      // Nominatim fallback
-      const url2 = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=6&countrycodes=my`;
-      const resp2 = await fetch(url2, { headers: { 'Accept-Language': 'en' } });
-      results = (await resp2.json()).map(r => ({ lat: parseFloat(r.lat), lon: parseFloat(r.lon), display_name: r.display_name }));
-    }
-    _mapSearchResults = results;
-    if (!results.length) {
-      resultsEl.innerHTML = '<div style="padding:8px 12px;color:#888;font-size:12px">No results. Try a different search term.</div>';
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q + ' Malaysia')}&format=json&limit=6&countrycodes=my`;
+    const resp = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+    const data = await resp.json();
+    _mapSearchResults = data.map(r => ({ lat: parseFloat(r.lat), lon: parseFloat(r.lon), display_name: r.display_name }));
+    if (!data.length) {
+      resultsEl.innerHTML = '<div style="padding:8px 12px;color:#888;font-size:12px">Not found. Try an address or area (e.g. "Jalan Raja Ekram, Ipoh"). For company lookup, close this and use 🔍 Find.</div>';
       return;
     }
-    resultsEl.innerHTML = results.map((r, i) => {
+    resultsEl.innerHTML = data.map((r, i) => {
       const display = r.display_name.length > 100 ? r.display_name.substring(0, 100) + '…' : r.display_name;
       return `<div onclick="selectMapSearchResult(${i})"
         style="padding:9px 12px;border-bottom:1px solid #1a3a6a;cursor:pointer;font-size:12px;color:#e0e0e0;line-height:1.4"
@@ -3231,7 +3212,7 @@ async function doMapSearch() {
       </div>`;
     }).join('');
   } catch(e) {
-    resultsEl.innerHTML = '<div style="padding:8px 12px;color:#e74c3c;font-size:12px">Search failed. Check your connection.</div>';
+    resultsEl.innerHTML = '<div style="padding:8px 12px;color:#e74c3c;font-size:12px">Search unavailable. Try clicking the map directly.</div>';
   }
 }
 
@@ -3312,7 +3293,7 @@ function openMapPicker(target) {
   mapPickerMode = 'pick';
   mapPickerKm = 0;
   document.getElementById('mapPickerTitle').textContent = '📍 Set Delivery Location';
-  document.getElementById('mapPickerSubtitle').textContent = 'Search for a company or click the map to drop a pin';
+  document.getElementById('mapPickerSubtitle').textContent = 'Search by address/area, or click the map to drop a pin';
   document.getElementById('mapPickerInfo').textContent = 'No location selected';
   document.getElementById('mapPickerDist').textContent = '';
   document.getElementById('mapPickerConfirmBtn').disabled = true;

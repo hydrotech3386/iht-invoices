@@ -766,10 +766,13 @@
     </div>
     <div id="mapSearchBar" style="padding:8px 12px;border-bottom:1px solid #1a3a6a;position:relative">
       <div style="display:flex;gap:6px;align-items:center">
-        <input type="text" id="mapSearchInput" placeholder="Search location (e.g. Sunway City Ipoh, George Town)…"
+        <input type="text" id="mapSearchInput" placeholder="Company name, or paste coordinates / Google Maps link…"
           style="flex:1;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:12px;outline:none"
           oninput="onMapSearchInput()" onkeydown="if(event.key==='Enter')doMapSearch()">
         <button onclick="doMapSearch()" style="background:#1a3a6a;border:none;border-radius:5px;color:#fff;padding:7px 12px;font-size:12px;cursor:pointer;white-space:nowrap">🔍 Search</button>
+      </div>
+      <div style="font-size:10px;color:#666;margin-top:4px">
+        Can't find it? In Google Maps right-click the pin → click the coordinates to copy → paste here.
       </div>
       <div id="mapSearchResults" style="position:absolute;left:12px;right:12px;background:#0d2044;border:1px solid #1a3a6a;border-radius:0 0 6px 6px;z-index:99999;max-height:200px;overflow-y:auto;display:none"></div>
     </div>
@@ -3101,30 +3104,22 @@ async function lookupDistance() {
     return true;
   }
 
-  // Step 1: Google Places API (most reliable for Malaysian businesses)
+  // Step 1: Google Places API (New) — most reliable for Malaysian businesses
   hintEl.textContent = 'Searching…';
-  const gKey = getGoogleKey();
-  if (gKey) {
-    try {
-      const gUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(currentCostCustomer + ' Malaysia')}&key=${gKey}`;
-      const gResp = await fetch(gUrl);
-      const gData = await gResp.json();
-      if (gData.status === 'OK' && gData.results?.[0]?.geometry?.location) {
-        const { lat, lng } = gData.results[0].geometry.location;
-        const km = await routeToPoint(lat, lng);
-        if (km !== null) {
-          const label = gData.results[0].formatted_address || gData.results[0].name || currentCostCustomer;
-          document.getElementById('fTransportKm').value = km;
-          hintEl.textContent = `🗺 Google: ${label} — ${km} km one-way. Click "+ Add to Items" to save.`;
-          updateTransportCalc();
-          btn.textContent = '🔍 Find'; btn.disabled = false;
-          return;
-        }
-      } else if (gData.status && gData.status !== 'ZERO_RESULTS') {
-        hintEl.textContent = `Google error: ${gData.status} — trying fallback…`;
+  if (getGoogleKey()) {
+    const g = await googlePlacesSearch(currentCostCustomer + ' Malaysia', 1);
+    if (g.results && g.results.length) {
+      const hit = g.results[0];
+      const km = await routeToPoint(hit.lat, hit.lon);
+      if (km !== null) {
+        document.getElementById('fTransportKm').value = km;
+        hintEl.textContent = `🗺 Google: ${hit.display_name} — ${km} km one-way. Click "+ Add to Items" to save.`;
+        updateTransportCalc();
+        btn.textContent = '🔍 Find'; btn.disabled = false;
+        return;
       }
-    } catch(e) {
-      hintEl.textContent = `Google request failed (${e.message}) — trying fallback…`;
+    } else if (g.error && g.error !== 'no-key') {
+      hintEl.textContent = `Google Places: ${g.error} — trying fallback…`;
     }
   }
 
@@ -3182,7 +3177,8 @@ async function lookupDistance() {
     } catch(e) {}
   }
 
-  hintEl.textContent = 'Could not determine location. Use 📍 Map pin or enter km manually.';
+  hintEl.innerHTML = 'Could not determine location. Click 📍 and paste the Google Maps coordinates ' +
+    '(right-click the pin in Google Maps → click the coordinates to copy), or enter km manually.';
   btn.textContent = '🔍 Find'; btn.disabled = false;
 }
 function addTransportToCost() {
@@ -3239,6 +3235,66 @@ let _gLegLines = [], _gStopMarkers = [];
 
 function loadGoogleMapsAPI(cb) { cb(false); } // Not used — using REST API instead
 
+// ---- Google Maps link / coordinate parser ----
+// Accepts anything you can copy out of Google Maps:
+//   "4.593820, 101.099520"                     (right-click → copy coordinates)
+//   ".../place/X/@4.5938,101.0995,17z/...!3d4.5938!4d101.0995"
+//   "...?q=4.5938,101.0995"
+function parseLatLngInput(text) {
+  if (!text) return null;
+  const s = String(text).trim();
+  let m;
+  // Plain "lat, lng" — Google Maps right-click → copy coordinates.
+  // Requires 3+ decimals on both so half-typed input doesn't trigger a jump.
+  m = s.match(/^\s*(-?\d{1,2}\.\d{3,})\s*,\s*(-?\d{1,3}\.\d{3,})\s*$/);
+  if (m) return { lat: +m[1], lng: +m[2] };
+  // !3d<lat>!4d<lng> — the actual place pin inside a Maps URL (most accurate)
+  m = s.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+  if (m) return { lat: +m[1], lng: +m[2] };
+  // /@<lat>,<lng>,<zoom>z — map centre
+  m = s.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m) return { lat: +m[1], lng: +m[2] };
+  // ?q= / ?ll= / &destination= / &center=
+  m = s.match(/[?&](?:q|ll|daddr|destination|center)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
+  if (m) return { lat: +m[1], lng: +m[2] };
+  return null;
+}
+function isGoogleMapsShortLink(text) {
+  return /(?:maps\.app\.goo\.gl|goo\.gl\/maps)/i.test(text || '');
+}
+
+// ---- Google Places API (New) — places.googleapis.com supports browser CORS ----
+// The legacy maps.googleapis.com/maps/api/place/* endpoints do NOT send CORS
+// headers, so they can never be called from a browser. This is the replacement.
+async function googlePlacesSearch(query, limit) {
+  const key = getGoogleKey();
+  if (!key) return { error: 'no-key' };
+  try {
+    const resp = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': key,
+        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location'
+      },
+      body: JSON.stringify({ textQuery: query, regionCode: 'MY', maxResultCount: limit || 6 })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { error: (data.error && data.error.message) || `HTTP ${resp.status}` };
+    const places = data.places || [];
+    return {
+      results: places.filter(p => p.location).map(p => ({
+        lat: p.location.latitude,
+        lon: p.location.longitude,
+        display_name: ((p.displayName && p.displayName.text) || '') +
+                      (p.formattedAddress ? ' · ' + p.formattedAddress : '')
+      }))
+    };
+  } catch(e) {
+    return { error: e.message || 'network blocked' };
+  }
+}
+
 function onMapSearchInput() {
   if (_useGoogleMap) return; // Google Autocomplete handles it
   clearTimeout(_mapSearchTimeout);
@@ -3252,48 +3308,49 @@ async function doMapSearch() {
   resultsEl.style.display = 'block';
   resultsEl.innerHTML = '<div style="padding:8px 12px;color:#aaa;font-size:12px">Searching…</div>';
 
-  const gKey = getGoogleKey();
-  if (gKey) {
-    // Google Places Text Search — works from browser with unrestricted key
-    try {
-      const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(q + ' Malaysia')}&key=${gKey}`;
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      if (data.status === 'OK' && data.results?.length) {
-        _mapSearchResults = data.results.map(r => ({
-          lat: r.geometry.location.lat, lon: r.geometry.location.lng,
-          display_name: r.name + (r.formatted_address ? ' · ' + r.formatted_address : '')
-        }));
-        resultsEl.innerHTML = _mapSearchResults.map((r, i) => {
-          const display = r.display_name.length > 100 ? r.display_name.substring(0, 100) + '…' : r.display_name;
-          return `<div onclick="selectMapSearchResult(${i})"
-            style="padding:9px 12px;border-bottom:1px solid #1a3a6a;cursor:pointer;font-size:12px;color:#e0e0e0;line-height:1.4"
-            onmouseover="this.style.background='#1a3a6a'" onmouseout="this.style.background=''">
-            📍 ${display}
-          </div>`;
-        }).join('');
-        return;
-      } else if (data.status === 'ZERO_RESULTS') {
-        resultsEl.innerHTML = '<div style="padding:8px 12px;color:#888;font-size:12px">No results found. Try a different name or address.</div>';
-        return;
-      } else {
-        // Show Google error status so we can debug
-        resultsEl.innerHTML = `<div style="padding:8px 12px;color:#f39c12;font-size:12px">Google: ${data.status||'error'}${data.error_message?' — '+data.error_message:''}. Trying OpenStreetMap…</div>`;
-      }
-    } catch(e) {
-      resultsEl.innerHTML = `<div style="padding:8px 12px;color:#f39c12;font-size:12px">Google search failed (${e.message}). Trying OpenStreetMap…</div>`;
-    }
+  // ---- Path A: pasted coordinates or a Google Maps link (always works, no API) ----
+  const pasted = parseLatLngInput(q);
+  if (pasted) {
+    resultsEl.style.display = 'none';
+    document.getElementById('mapSearchInput').value = `${pasted.lat.toFixed(5)}, ${pasted.lng.toFixed(5)}`;
+    if (mapPicker) mapPicker.setView([pasted.lat, pasted.lng], 16);
+    onMapPickerClick(pasted.lat, pasted.lng);
+    return;
+  }
+  if (isGoogleMapsShortLink(q)) {
+    resultsEl.innerHTML = '<div style="padding:8px 12px;color:#f39c12;font-size:12px;line-height:1.5">' +
+      'Short links (maps.app.goo.gl) can\'t be opened from here.<br>' +
+      'Open the link in Google Maps, <strong>right-click the pin → click the coordinates</strong> to copy, then paste them here.</div>';
+    return;
   }
 
-  // Nominatim fallback
+  // ---- Path B: Google Places API (New) — browser-callable ----
+  let googleErr = null;
+  if (getGoogleKey()) {
+    const g = await googlePlacesSearch(q + ' Malaysia');
+    if (g.results && g.results.length) {
+      _mapSearchResults = g.results;
+      resultsEl.innerHTML = _mapSearchResults.map((r, i) => {
+        const display = r.display_name.length > 100 ? r.display_name.substring(0, 100) + '…' : r.display_name;
+        return `<div onclick="selectMapSearchResult(${i})"
+          style="padding:9px 12px;border-bottom:1px solid #1a3a6a;cursor:pointer;font-size:12px;color:#e0e0e0;line-height:1.4"
+          onmouseover="this.style.background='#1a3a6a'" onmouseout="this.style.background=''">
+          🗺 ${display}
+        </div>`;
+      }).join('');
+      return;
+    }
+    if (g.error && g.error !== 'no-key') googleErr = g.error;
+  }
+
+  // ---- Path C: Nominatim fallback ----
   try {
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q + ' Malaysia')}&format=json&limit=6&countrycodes=my`;
     const resp = await fetch(url, { headers: { 'Accept-Language': 'en' } });
     const data = await resp.json();
     _mapSearchResults = data.map(r => ({ lat: parseFloat(r.lat), lon: parseFloat(r.lon), display_name: r.display_name }));
     if (!data.length) {
-      resultsEl.innerHTML += '<div style="padding:8px 12px;color:#888;font-size:12px">Not found in OpenStreetMap either. Try the street address or use 🔍 Find button instead.</div>';
+      resultsEl.innerHTML = _noResultsHelp(googleErr);
       return;
     }
     resultsEl.innerHTML = data.map((r, i) => {
@@ -3305,8 +3362,21 @@ async function doMapSearch() {
       </div>`;
     }).join('');
   } catch(e) {
-    resultsEl.innerHTML += '<div style="padding:8px 12px;color:#e74c3c;font-size:12px">Search unavailable. Try clicking the map directly.</div>';
+    resultsEl.innerHTML = _noResultsHelp(googleErr);
   }
+}
+
+// Shown when no search path found the place — tells the user the always-works route.
+function _noResultsHelp(googleErr) {
+  const gLine = googleErr
+    ? `<div style="color:#f39c12;margin-bottom:6px">Google Places: ${googleErr}</div>`
+    : (getGoogleKey() ? '' : '<div style="color:#888;margin-bottom:6px">No Google API key set (👥 Users → Google API Key).</div>');
+  return `<div style="padding:10px 12px;font-size:12px;color:#e0e0e0;line-height:1.6">
+    ${gLine}
+    <div style="color:#888;margin-bottom:6px">Not found by name.</div>
+    <strong style="color:#4fc3f7">Always works:</strong> open the place in Google Maps →
+    right-click the pin → click the coordinates to copy → paste them in this box.
+  </div>`;
 }
 
 function selectMapSearchResult(i) {

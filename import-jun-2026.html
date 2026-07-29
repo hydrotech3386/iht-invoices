@@ -1,0 +1,590 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>IHT Import — June 2026</title>
+<style>
+  body{font-family:'Segoe UI',sans-serif;background:#1a1a2e;color:#e0e0e0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px}
+  .box{background:#16213e;border:1px solid #0f3460;border-radius:12px;padding:28px 32px;max-width:560px;width:100%}
+  h2{color:#e94560;margin:0 0 6px}
+  p{font-size:13px;color:#aaa;margin:0 0 20px}
+  button{width:100%;padding:11px;border:none;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer}
+  .btn{background:#27ae60;color:#fff}.btn:disabled{background:#555;cursor:not-allowed}
+  .status{font-size:13px;margin-top:16px;line-height:1.8;white-space:pre-wrap}
+  .ok{color:#5dfc8d}.err{color:#e94560}.info{color:#4fc3f7}
+</style>
+</head>
+<body>
+<div class="box">
+  <h2>IHT Import - June 2026</h2>
+  <p>52 entries (1-22 Jun 2026)<br>Jack 24 - Kamal 15 - Helmi 3 - Faris 1 - Unassigned 9<br>Total: RM 415,509.00<br><br>Existing Jan-May data will NOT be touched.</p>
+  <button class="btn" id="importBtn" onclick="doImport()">Add June 2026 Entries</button>
+  <div class="status" id="status"></div>
+</div>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script>
+const FB_CONFIG={apiKey:"AIzaSyCRJyLXrXU1JHGShakndrHl_xM63CK9E5k",authDomain:"iht-invoices.firebaseapp.com",databaseURL:"https://iht-invoices-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"iht-invoices",storageBucket:"iht-invoices.firebasestorage.app",messagingSenderId:"1071483045703"};
+firebase.initializeApp(FB_CONFIG);
+const db=firebase.database();
+function log(msg,cls='info'){document.getElementById('status').innerHTML+='<span class="'+cls+'">'+msg+'</span>\n';}
+function uid(i){return(Date.now()-i*1000).toString(36)+Math.random().toString(36).slice(2,7);}
+const JUN_RAW=[
+  {
+    "invNo": "CS2607/091",
+    "invoiceDate": "2026-06-03",
+    "customer": "CASH SALES",
+    "amount": 966,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "CS2607/092",
+    "invoiceDate": "2026-06-03",
+    "customer": "CASH SALES",
+    "amount": 270,
+    "term": "C.O.D",
+    "salesman": "",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "CS2607/093",
+    "invoiceDate": "2026-06-04",
+    "customer": "CASH SALES",
+    "amount": 1827,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "CS2607/094",
+    "invoiceDate": "2026-06-05",
+    "customer": "CASH SALES",
+    "amount": 1790,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "CS2607/096",
+    "invoiceDate": "2026-06-08",
+    "customer": "CASH SALES",
+    "amount": 194.4,
+    "term": "C.O.D",
+    "salesman": "",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "CS2607/097",
+    "invoiceDate": "2026-06-10",
+    "customer": "CASH SALES",
+    "amount": 162,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "CS2607/098",
+    "invoiceDate": "2026-06-10",
+    "customer": "CASH SALES",
+    "amount": 6702,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "CS2607/099",
+    "invoiceDate": "2026-06-15",
+    "customer": "CASH SALES",
+    "amount": 327.6,
+    "term": "C.O.D",
+    "salesman": "",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "CS2607/100",
+    "invoiceDate": "2026-06-16",
+    "customer": "CASH SALES",
+    "amount": 6340,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "CS2607/101",
+    "invoiceDate": "2026-06-16",
+    "customer": "CASH SALES",
+    "amount": 4648,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "CS2607/102",
+    "invoiceDate": "2026-06-17",
+    "customer": "CASH SALES",
+    "amount": 162,
+    "term": "C.O.D",
+    "salesman": "",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "CS2607/103",
+    "invoiceDate": "2026-06-20",
+    "customer": "CASH SALES",
+    "amount": 1689,
+    "term": "C.O.D",
+    "salesman": "Helmi",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "CS2607/104",
+    "invoiceDate": "2026-06-22",
+    "customer": "CASH SALES",
+    "amount": 8287.4,
+    "term": "C.O.D",
+    "salesman": "Helmi",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "CS2607/105",
+    "invoiceDate": "2026-06-22",
+    "customer": "CASH SALES",
+    "amount": 162,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260285",
+    "invoiceDate": "2026-06-03",
+    "customer": "CLCE CONSTRUCTION SDN BHD",
+    "amount": 2750,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260286",
+    "invoiceDate": "2026-06-03",
+    "customer": "ECORIEGE SDN.BHD.",
+    "amount": 9065,
+    "term": "30 DAYS",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260287",
+    "invoiceDate": "2026-06-04",
+    "customer": "LUMUT MARITIME TERMINAL",
+    "amount": 12620,
+    "term": "30 DAYS",
+    "salesman": "Kamal",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260288",
+    "invoiceDate": "2026-06-05",
+    "customer": "UNISEM (M) BERHAD",
+    "amount": 4850,
+    "term": "30 DAYS",
+    "salesman": "Kamal",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260289",
+    "invoiceDate": "2026-06-06",
+    "customer": "BELKRON TRADING SDN.BHD.",
+    "amount": 18850,
+    "term": "30 DAYS",
+    "salesman": "",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260290",
+    "invoiceDate": "2026-06-06",
+    "customer": "MURATA ELECTRONICS",
+    "amount": 240,
+    "term": "30 DAYS",
+    "salesman": "Kamal",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260291",
+    "invoiceDate": "2026-06-06",
+    "customer": "MURATA ELECTRONICS",
+    "amount": 250,
+    "term": "30 DAYS",
+    "salesman": "Kamal",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260292",
+    "invoiceDate": "2026-06-08",
+    "customer": "THC IPOH CENTER",
+    "amount": 2499,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260293",
+    "invoiceDate": "2026-06-08",
+    "customer": "M.E.T MOTION (IPOH) SDN.BHD.",
+    "amount": 3648,
+    "term": "30 DAYS",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260294",
+    "invoiceDate": "2026-06-09",
+    "customer": "ETRONEX PLT",
+    "amount": 7900,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260295",
+    "invoiceDate": "2026-06-09",
+    "customer": "TERAJU BANJAR ENTERPRISE",
+    "amount": 7860,
+    "term": "C.O.D",
+    "salesman": "Helmi",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260296",
+    "invoiceDate": "2026-06-09",
+    "customer": "SMART JOURNEY SDN BHD",
+    "amount": 7000,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260297",
+    "invoiceDate": "2026-06-10",
+    "customer": "UNITED PLANTATIONS BERHAD",
+    "amount": 49340,
+    "term": "C.O.D",
+    "salesman": "Kamal",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260298",
+    "invoiceDate": "2026-06-10",
+    "customer": "AALBORG PORTLAND MALAYSIA",
+    "amount": 8400,
+    "term": "30 DAYS",
+    "salesman": "Kamal",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260299",
+    "invoiceDate": "2026-06-10",
+    "customer": "AALBORG PORTLAND MALAYSIA",
+    "amount": 659.2,
+    "term": "30 DAYS",
+    "salesman": "Kamal",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260300",
+    "invoiceDate": "2026-06-10",
+    "customer": "ENRICH UNION SDN.BHD.",
+    "amount": 80000,
+    "term": "30 DAYS",
+    "salesman": "",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260301",
+    "invoiceDate": "2026-06-11",
+    "customer": "KEJURUTERAAN KIWA",
+    "amount": 860,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260302",
+    "invoiceDate": "2026-06-11",
+    "customer": "YEE LEE PALM OIL INDUSTRIES",
+    "amount": 2085.6,
+    "term": "30 DAYS",
+    "salesman": "",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260303",
+    "invoiceDate": "2026-06-11",
+    "customer": "UNITED PLANTATIONS BERHAD",
+    "amount": 29160,
+    "term": "C.O.D",
+    "salesman": "Kamal",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260304",
+    "invoiceDate": "2026-06-11",
+    "customer": "TNB JANAMANJUNG SDN.BHD.",
+    "amount": 23740,
+    "term": "30 DAYS",
+    "salesman": "Kamal",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260305",
+    "invoiceDate": "2026-06-12",
+    "customer": "UNISEM (M) BERHAD",
+    "amount": 5290,
+    "term": "30 DAYS",
+    "salesman": "Kamal",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260306",
+    "invoiceDate": "2026-06-12",
+    "customer": "CARSEM (M) SDN. BHD.(M-SITE)",
+    "amount": 1538,
+    "term": "30 DAYS",
+    "salesman": "Kamal",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260307",
+    "invoiceDate": "2026-06-13",
+    "customer": "ATLAS DESIRE SDN BHD",
+    "amount": 2500,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260308",
+    "invoiceDate": "2026-06-15",
+    "customer": "CHUAN SIN SDN.BHD.",
+    "amount": 6814.8,
+    "term": "30 DAYS",
+    "salesman": "",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260309",
+    "invoiceDate": "2026-06-15",
+    "customer": "CHUAN SIN SDN.BHD.",
+    "amount": 9124.4,
+    "term": "30 DAYS",
+    "salesman": "",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260310",
+    "invoiceDate": "2026-06-15",
+    "customer": "MONKEY PLUMBING SPECIALIST",
+    "amount": 1050,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260311",
+    "invoiceDate": "2026-06-15",
+    "customer": "ECORIEGE SDN.BHD.",
+    "amount": 7350,
+    "term": "30 DAYS",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260312",
+    "invoiceDate": "2026-06-15",
+    "customer": "SUCCESS MACHINERY",
+    "amount": 2850,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260313",
+    "invoiceDate": "2026-06-15",
+    "customer": "MAKTAB RENDAH SAINS MARA",
+    "amount": 18200,
+    "term": "C.O.D",
+    "salesman": "Faris",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260314",
+    "invoiceDate": "2026-06-15",
+    "customer": "YUM CHA HOUSE DIM SUM SDN",
+    "amount": 1150,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260315",
+    "invoiceDate": "2026-06-17",
+    "customer": "KEJURUTERAAN KIWA",
+    "amount": 1890,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260316",
+    "invoiceDate": "2026-06-18",
+    "customer": "SMART JOURNEY SDN BHD",
+    "amount": 19200,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260317",
+    "invoiceDate": "2026-06-18",
+    "customer": "N.B.F(M)SDN.BHD.",
+    "amount": 1653.6,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260318",
+    "invoiceDate": "2026-06-18",
+    "customer": "UAC BERHAD",
+    "amount": 4350,
+    "term": "30 DAYS",
+    "salesman": "Kamal",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260319",
+    "invoiceDate": "2026-06-18",
+    "customer": "SAINT-GOBAIN PRIMA SDN BHD",
+    "amount": 6280,
+    "term": "C.O.D",
+    "salesman": "Kamal",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260320",
+    "invoiceDate": "2026-06-18",
+    "customer": "UNISEM (M) BERHAD",
+    "amount": 19000,
+    "term": "30 DAYS",
+    "salesman": "Kamal",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260321",
+    "invoiceDate": "2026-06-19",
+    "customer": "UNISEM (M) BERHAD (GOPENG)",
+    "amount": 1100,
+    "term": "30 DAYS",
+    "salesman": "Kamal",
+    "payments": [],
+    "status": "unpaid"
+  },
+  {
+    "invNo": "E260322",
+    "invoiceDate": "2026-06-22",
+    "customer": "PCM IPOH MOTOR SDN BHD",
+    "amount": 864,
+    "term": "C.O.D",
+    "salesman": "Jack",
+    "payments": [],
+    "status": "unpaid"
+  }
+];
+async function doImport(){
+  const btn=document.getElementById('importBtn');
+  btn.disabled=true;btn.textContent='Working...';
+  try{
+    log('Authenticating...');
+    await firebase.auth().signInAnonymously();
+    log('Authenticated','ok');
+    log('Reading existing Firebase data...');
+    const snap=await db.ref('invoices').get();
+    const existing=snap.val()||{invoices:[],salesmen:['Jack','Kamal','Helmi','Faris'],lastModified:Date.now()};
+    const existingNos=new Set((existing.invoices||[]).map(i=>i.invoiceNo));
+    log('Existing entries: '+existingNos.size,'ok');
+    const now=Date.now();
+    const newEntries=JUN_RAW.filter(r=>!existingNos.has(r.invNo)).map((r,i)=>({
+      id:uid(i),invoiceNo:r.invNo,projectRef:'',invoiceDate:r.invoiceDate,term:r.term,
+      customer:r.customer,contact:'',amount:r.amount,sst:0,salesman:r.salesman,
+      notes:'',status:'unpaid',payments:[],
+      createdAt:now-(JUN_RAW.length-i)*60000,updatedAt:now-(JUN_RAW.length-i)*60000
+    }));
+    const skipped=JUN_RAW.length-newEntries.length;
+    if(skipped)log('Skipped (already exist): '+skipped,'info');
+    const merged={invoices:[...(existing.invoices||[]),...newEntries],salesmen:existing.salesmen||['Jack','Kamal','Helmi','Faris'],lastModified:now};
+    log('Writing '+newEntries.length+' new entries...');
+    await db.ref('invoices').set(merged);
+    log('Done! Added '+newEntries.length+' June entries.','ok');
+    log('Total in database: '+merged.invoices.length,'ok');
+    log('Close this page and open Invoice Tracker.','info');
+    btn.textContent='Import Complete';
+  }catch(e){
+    log('Error: '+e.message,'err');
+    btn.disabled=false;btn.textContent='Retry';
+  }
+}
+</script>
+</body>
+</html>

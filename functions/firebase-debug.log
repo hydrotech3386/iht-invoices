@@ -1,0 +1,84 @@
+[debug] [2026-07-22T04:56:44.638Z] ----------------------------------------------------------------------
+[debug] [2026-07-22T04:56:44.649Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\danie\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js functions:shell
+[debug] [2026-07-22T04:56:44.650Z] CLI Version:   15.24.0
+[debug] [2026-07-22T04:56:44.650Z] Platform:      win32
+[debug] [2026-07-22T04:56:44.651Z] Node Version:  v24.15.0
+[debug] [2026-07-22T04:56:44.651Z] Detected Agent: unknown
+[debug] [2026-07-22T04:56:44.652Z] Time:          Wed Jul 22 2026 12:56:44 GMT+0800 (Malaysia Time)
+[debug] [2026-07-22T04:56:44.652Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-07-22T04:56:49.651Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-07-22T04:56:49.652Z] > authorizing via signed-in user (muncee7@gmail.com)
+[debug] [2026-07-22T04:56:49.653Z] [iam] checking project iht-invoices for permissions ["firebase.projects.get"]
+[debug] [2026-07-22T04:56:49.717Z] Checked if tokens are valid: true, expires at: 1784699002480
+[debug] [2026-07-22T04:56:49.718Z] Checked if tokens are valid: true, expires at: 1784699002480
+[debug] [2026-07-22T04:56:49.721Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/iht-invoices:testIamPermissions [none]
+[debug] [2026-07-22T04:56:49.723Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/iht-invoices:testIamPermissions  x-goog-user-project=iht-invoices
+[debug] [2026-07-22T04:56:49.725Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/iht-invoices:testIamPermissions {"permissions":["firebase.projects.get"]}
+[debug] [2026-07-22T04:56:51.029Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/iht-invoices:testIamPermissions 200
+[debug] [2026-07-22T04:56:51.031Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/iht-invoices:testIamPermissions {"permissions":["firebase.projects.get"]}
+[debug] [2026-07-22T04:56:51.074Z] [functions] Functions Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-07-22T04:56:51.350Z] defaultcredentials: writing to file C:\Users\danie\AppData\Roaming\firebase\muncee7_gmail_com_application_default_credentials.json
+[debug] [2026-07-22T04:56:51.402Z] DEBUG: Setting GAC to C:\Users\danie\AppData\Roaming\firebase\muncee7_gmail_com_application_default_credentials.json
+[debug] [2026-07-22T04:56:51.410Z] Checked if tokens are valid: true, expires at: 1784699002480
+[debug] [2026-07-22T04:56:51.411Z] Checked if tokens are valid: true, expires at: 1784699002480
+[debug] [2026-07-22T04:56:51.411Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/iht-invoices/adminSdkConfig [none]
+[debug] [2026-07-22T04:56:52.708Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/iht-invoices/adminSdkConfig 200
+[debug] [2026-07-22T04:56:52.708Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/iht-invoices/adminSdkConfig {"projectId":"iht-invoices","databaseURL":"https://iht-invoices-default-rtdb.asia-southeast1.firebasedatabase.app","storageBucket":"iht-invoices.firebasestorage.app"}
+[debug] [2026-07-22T04:56:52.747Z] [functions] Watching "C:\Users\danie\OneDrive\Claude\Hydrotech\Invoice Tracker\functions" for Cloud Functions...
+[debug] [2026-07-22T04:56:52.752Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-07-22T04:56:56.090Z] > [functions] package.json contents: {
+  "name": "iht-invoices-functions",
+  "description": "Scheduled nightly backup of IHT Invoice Tracker database",
+  "scripts": {
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^12.0.0",
+    "firebase-functions": "^5.0.0"
+  },
+  "private": true
+}
+[debug] [2026-07-22T04:56:56.091Z] Building nodejs source
+[debug] [2026-07-22T04:56:56.092Z] Failed to find version of module node: reached end of search path C:\Users\danie\OneDrive\Claude\Hydrotech\Invoice Tracker\functions\node_modules
+[warn] !  functions: Your requested "node" version "20" doesn't match your global version "24". Using node@24 from host. 
+[debug] [2026-07-22T04:56:56.104Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-07-22T04:56:56.131Z] Found firebase-functions binary at 'C:\Users\danie\OneDrive\Claude\Hydrotech\Invoice Tracker\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8865
+
+[debug] [2026-07-22T04:56:57.201Z] Got response from /__/functions.yaml {"endpoints":{"scheduledBackup":{"availableMemoryMb":256,"timeoutSeconds":120,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["asia-southeast1"],"labels":{},"scheduleTrigger":{"schedule":"0 2 * * *","retryConfig":{},"timeZone":"Asia/Kuala_Lumpur"},"entryPoint":"scheduledBackup"}},"specVersion":"v1alpha1","requiredAPIs":[{"api":"cloudscheduler.googleapis.com","reason":"Needed for scheduled functions."}],"extensions":{}}
+[debug] [2026-07-22T04:57:00.312Z] [functions] Loaded functions definitions from source: scheduledBackup.
+[debug] [2026-07-22T04:57:00.315Z] [functions[asia-southeast1-scheduledBackup]] function ignored because the pubsub emulator does not exist or is not running.
+[info] i  functions: Loaded functions: scheduledBackup 
+[warn] !  functions: The following emulators are not running, calls to these services will affect production: firestore, database, pubsub, storage, eventarc, tasks 
+[debug] [2026-07-22T04:57:10.893Z] shell:scheduledBackup: trigger={"entryPoint":"scheduledBackup","platform":"gcfv2","region":"asia-southeast1","name":"scheduledBackup","id":"asia-southeast1-scheduledBackup","codebase":"default","availableMemoryMb":256,"labels":{"EVENTARC_CLOUD_EVENT_SOURCE":"run-emulated.googleapis.com/projects/iht-invoices/locations/asia-southeast1/services/scheduledBackup"},"timeoutSeconds":120,"secretEnvironmentVariables":[],"eventTrigger":{"eventType":"pubsub","resource":""},"schedule":{"schedule":"0 2 * * *","timeZone":"Asia/Kuala_Lumpur","retryConfig":{}}}
+[debug] [2026-07-22T04:57:10.894Z] shell:scheduledBackup: opts={}, data={}
+[debug] [2026-07-22T04:57:10.955Z] DEBUG: [worker-pool] addWorker(asia-southeast1-scheduledBackup)
+[debug] [2026-07-22T04:57:10.958Z] DEBUG: [worker-pool] Adding worker with key asia-southeast1-scheduledBackup, total=1
+[debug] [2026-07-22T04:57:15.991Z] DEBUG: [runtime-status] [40388] Resolved module firebase-admin {"declared":true,"installed":true,"version":"12.7.0","resolution":"C:\\Users\\danie\\OneDrive\\Claude\\Hydrotech\\Invoice Tracker\\functions\\node_modules\\firebase-admin\\lib\\index.js"}
+[debug] [2026-07-22T04:57:15.997Z] DEBUG: [runtime-status] [40388] Resolved module firebase-functions {"declared":true,"installed":true,"version":"5.1.1","resolution":"C:\\Users\\danie\\OneDrive\\Claude\\Hydrotech\\Invoice Tracker\\functions\\node_modules\\firebase-functions\\lib\\v1\\index.js"}
+[debug] [2026-07-22T04:57:15.999Z] DEBUG: [runtime-status] [40388] Outgoing network have been stubbed. [{"name":"http","status":"mocked"},{"name":"http","status":"mocked"},{"name":"https","status":"mocked"},{"name":"https","status":"mocked"},{"name":"net","status":"mocked"}]
+[debug] [2026-07-22T04:57:16.005Z] DEBUG: [runtime-status] [40388] Resolved module firebase-functions {"declared":true,"installed":true,"version":"5.1.1","resolution":"C:\\Users\\danie\\OneDrive\\Claude\\Hydrotech\\Invoice Tracker\\functions\\node_modules\\firebase-functions\\lib\\v1\\index.js"}
+[debug] [2026-07-22T04:57:16.745Z] DEBUG: [runtime-status] [40388] Resolved module firebase-admin {"declared":true,"installed":true,"version":"12.7.0","resolution":"C:\\Users\\danie\\OneDrive\\Claude\\Hydrotech\\Invoice Tracker\\functions\\node_modules\\firebase-admin\\lib\\index.js"}
+[debug] [2026-07-22T04:57:16.755Z] DEBUG: [runtime-status] [40388] Resolved module firebase-functions {"declared":true,"installed":true,"version":"5.1.1","resolution":"C:\\Users\\danie\\OneDrive\\Claude\\Hydrotech\\Invoice Tracker\\functions\\node_modules\\firebase-functions\\lib\\v1\\index.js"}
+[debug] [2026-07-22T04:57:17.355Z] DEBUG: [runtime-status] [40388] firebase-admin has been stubbed. {"adminResolution":{"declared":true,"installed":true,"version":"12.7.0","resolution":"C:\\Users\\danie\\OneDrive\\Claude\\Hydrotech\\Invoice Tracker\\functions\\node_modules\\firebase-admin\\lib\\index.js"}}
+[debug] [2026-07-22T04:57:17.393Z] DEBUG: [runtime-status] [40388] Functions runtime initialized. {"cwd":"C:\\Users\\danie\\OneDrive\\Claude\\Hydrotech\\Invoice Tracker\\functions","node_version":"24.15.0"}
+[debug] [2026-07-22T04:57:17.394Z] DEBUG: [runtime-status] [40388] Listening to port: \\?\pipe\fire_emu_b53b790d53b99eac
+[debug] [2026-07-22T04:57:17.427Z] DEBUG: [worker-asia-southeast1-scheduledBackup-aed00f88-7426-4ae0-8cfe-69d7a8a6d837]: IDLE
+[warn] !  Google API requested!
+   - URL: "https://oauth2.googleapis.com/token"
+   - Be careful, this may be a production service. {"metadata":{"emulator":{"name":"functions"},"function":{"name":"asia-southeast1-scheduledBackup"},"extension":{},"message":"Google API requested!\n   - URL: \"https://oauth2.googleapis.com/token\"\n   - Be careful, this may be a production service."}}
+[warn] !  Google API requested!
+   - URL: "https://storage.googleapis.com/upload/storage/v1/b/iht-invoices.firebasestorage.app/o?name=backups%2F2026-07-22%2Fiht-invoices-2026-07-22T045720.json&uploadType=resumable"
+   - Be careful, this may be a production service. {"metadata":{"emulator":{"name":"functions"},"function":{"name":"asia-southeast1-scheduledBackup"},"extension":{},"message":"Google API requested!\n   - URL: \"https://storage.googleapis.com/upload/storage/v1/b/iht-invoices.firebasestorage.app/o?name=backups%2F2026-07-22%2Fiht-invoices-2026-07-22T045720.json&uploadType=resumable\"\n   - Be careful, this may be a production service."}}
+[warn] !  Google API requested!
+   - URL: "https://storage.googleapis.com/upload/storage/v1/b/iht-invoices.firebasestorage.app/o?name=backups%2F2026-07-22%2Fiht-invoices-2026-07-22T045720.json&uploadType=resumable&upload_id=AKhXX7Kaf1encm8m-_F01pRwfURaFMzOPlKHo_zfhoWIgJB-zesjrF5-CCzv5ysJYcqkJZDMc72NzPqZTIR_CD1KqsL9i3VZcpv4tLYV9pKKgnE"
+   - Be careful, this may be a production service. {"metadata":{"emulator":{"name":"functions"},"function":{"name":"asia-southeast1-scheduledBackup"},"extension":{},"message":"Google API requested!\n   - URL: \"https://storage.googleapis.com/upload/storage/v1/b/iht-invoices.firebasestorage.app/o?name=backups%2F2026-07-22%2Fiht-invoices-2026-07-22T045720.json&uploadType=resumable&upload_id=AKhXX7Kaf1encm8m-_F01pRwfURaFMzOPlKHo_zfhoWIgJB-zesjrF5-CCzv5ysJYcqkJZDMc72NzPqZTIR_CD1KqsL9i3VZcpv4tLYV9pKKgnE\"\n   - Be careful, this may be a production service."}}
+[info] >  Backup complete: backups/2026-07-22/iht-invoices-2026-07-22T045720.json (32057.1 KB) {"user":"Backup complete: backups/2026-07-22/iht-invoices-2026-07-22T045720.json (32057.1 KB)","metadata":{"emulator":{"name":"functions"},"function":{"name":"asia-southeast1-scheduledBackup"},"extension":{},"message":"\u001b[90m> \u001b[39m Backup complete: backups/2026-07-22/iht-invoices-2026-07-22T045720.json (32057.1 KB)"}}

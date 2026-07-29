@@ -3180,20 +3180,7 @@ let _useGoogleMap = false;
 let gMap = null, gMapMarker = null, gOfficeMarker = null, gRoutePoly = null;
 let _gLegLines = [], _gStopMarkers = [];
 
-function loadGoogleMapsAPI(cb) {
-  if (_gMapsLoaded) { cb(true); return; }
-  _gMapsCallbacks.push(cb);
-  if (_gMapsCallbacks.length > 1) return;
-  window._onGMapsReady = () => {
-    _gMapsLoaded = true;
-    _gMapsCallbacks.forEach(f => f(true)); _gMapsCallbacks = [];
-    delete window._onGMapsReady;
-  };
-  const s = document.createElement('script');
-  s.src = `https://maps.googleapis.com/maps/api/js?key=${getGoogleKey()}&libraries=places&callback=_onGMapsReady`;
-  s.onerror = () => { _gMapsCallbacks.forEach(f => f(false)); _gMapsCallbacks = []; };
-  document.head.appendChild(s);
-}
+function loadGoogleMapsAPI(cb) { cb(false); } // Not used — using REST API instead
 
 function onMapSearchInput() {
   if (_useGoogleMap) return; // Google Autocomplete handles it
@@ -3207,17 +3194,36 @@ async function doMapSearch() {
   if (!q) { resultsEl.style.display = 'none'; return; }
   resultsEl.style.display = 'block';
   resultsEl.innerHTML = '<div style="padding:8px 12px;color:#aaa;font-size:12px">Searching…</div>';
+  const gKey = getGoogleKey();
   try {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=6&countrycodes=my`;
-    const resp = await fetch(url, { headers: { 'Accept-Language': 'en' } });
-    const data = await resp.json();
-    _mapSearchResults = data;
-    if (!data.length) {
+    let results = [];
+    if (gKey) {
+      // Google Places Text Search (REST — no billing/Maps JS needed, just Places API)
+      const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(q + ' Malaysia')}&key=${gKey}`;
+      const resp = await fetch(url);
+      const data = await resp.json();
+      if (data.status === 'OK' && data.results?.length) {
+        results = data.results.map(r => ({
+          lat: r.geometry.location.lat, lon: r.geometry.location.lng,
+          display_name: r.name + (r.formatted_address ? ' — ' + r.formatted_address : '')
+        }));
+      } else if (data.status && data.status !== 'ZERO_RESULTS') {
+        // Google error — fall through to Nominatim
+      }
+    }
+    if (!results.length) {
+      // Nominatim fallback
+      const url2 = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=6&countrycodes=my`;
+      const resp2 = await fetch(url2, { headers: { 'Accept-Language': 'en' } });
+      results = (await resp2.json()).map(r => ({ lat: parseFloat(r.lat), lon: parseFloat(r.lon), display_name: r.display_name }));
+    }
+    _mapSearchResults = results;
+    if (!results.length) {
       resultsEl.innerHTML = '<div style="padding:8px 12px;color:#888;font-size:12px">No results. Try a different search term.</div>';
       return;
     }
-    resultsEl.innerHTML = data.map((r, i) => {
-      const display = r.display_name.length > 90 ? r.display_name.substring(0, 90) + '…' : r.display_name;
+    resultsEl.innerHTML = results.map((r, i) => {
+      const display = r.display_name.length > 100 ? r.display_name.substring(0, 100) + '…' : r.display_name;
       return `<div onclick="selectMapSearchResult(${i})"
         style="padding:9px 12px;border-bottom:1px solid #1a3a6a;cursor:pointer;font-size:12px;color:#e0e0e0;line-height:1.4"
         onmouseover="this.style.background='#1a3a6a'" onmouseout="this.style.background=''">
@@ -3316,20 +3322,10 @@ function openMapPicker(target) {
   document.getElementById('mapSearchInput').value = '';
   document.getElementById('mapSearchResults').style.display = 'none';
   document.getElementById('mapPickerBg').classList.add('open');
-  const doInit = () => {
-    const needReinit = (_useGoogleMap && !gMap) || (!_useGoogleMap && !mapPicker) ||
-                       (_useGoogleMap && mapPicker) || (!_useGoogleMap && gMap);
-    if (needReinit) { _initMapPicker(); }
-    else {
-      _clearMapOverlays();
-      if (_useGoogleMap && gMap) { google.maps.event.trigger(gMap, 'resize'); gMap.setCenter(getOffice()); gMap.setZoom(12); }
-      else if (mapPicker) mapPicker.invalidateSize();
-    }
-  };
   setTimeout(() => {
-    const gKey = getGoogleKey();
-    if (gKey && !_gMapsLoaded) { loadGoogleMapsAPI(ok => { _useGoogleMap = ok; doInit(); }); }
-    else { _useGoogleMap = _gMapsLoaded && !!getGoogleKey(); doInit(); }
+    _useGoogleMap = false;
+    if (!mapPicker) { _initMapPicker(); } else { _clearMapOverlays(); }
+    mapPicker.invalidateSize();
   }, 150);
 }
 
@@ -3505,11 +3501,7 @@ async function showTripRouteOnMap() {
     document.getElementById('mapPickerSubtitle').textContent = `${_lastTripLegs.stopLocations.length} stop(s) shown. Each color = one road segment.`;
   };
 
-  setTimeout(() => {
-    const gKey = getGoogleKey();
-    if (gKey && !_gMapsLoaded) { loadGoogleMapsAPI(ok => { _useGoogleMap = ok; doRoute(); }); }
-    else { _useGoogleMap = _gMapsLoaded && !!getGoogleKey(); doRoute(); }
-  }, 200);
+  setTimeout(() => { _useGoogleMap = false; doRoute(); }, 200);
 }
 
 function openCostView(id) {

@@ -2928,6 +2928,10 @@ function openCacheManager() {
   cacheNewCoords = null;
   renderCacheManagerList();
   populateCacheCustomerList();
+  // Opened from an invoice's cost modal → pre-fill that customer
+  document.getElementById('cacheNewCustomer').value = currentCostCustomer || '';
+  document.getElementById('cacheNewCity').value = '';
+  document.getElementById('cacheNewKm').value = '';
   document.getElementById('cacheManagerBg').classList.add('open');
 }
 // Customer names from existing invoices, so entries can be picked instead of typed.

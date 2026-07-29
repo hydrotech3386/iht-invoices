@@ -2769,8 +2769,37 @@ async function calculateRouteDistance() {
   if (tripRouteIds.length < 2) { alert('Select at least one other invoice for the trip.'); return; }
   const hint = document.getElementById('tripRouteHint');
 
+  // Any stop without coordinates: look it up automatically and cache the result,
+  // so the user only has to pin manually when every automatic source fails.
+  let locs = tripRouteIds.map(id => getStopLocation(id));
+  const autoFailed = [], autoFound = [];
+  if (!locs.every(Boolean)) {
+    const cache = getTransportCache();
+    for (let i = 0; i < tripRouteIds.length; i++) {
+      if (locs[i]) continue;
+      const inv = state.invoices.find(x => x.id === tripRouteIds[i]);
+      const cust = inv && inv.customer;
+      if (!cust) { autoFailed.push(inv ? inv.invoiceNo : tripRouteIds[i]); continue; }
+      hint.textContent = `Finding ${cust}…`;
+      const r = await resolveCustomerLocation(cust, m => { hint.textContent = `${cust}: ${m}`; });
+      if (!r) { autoFailed.push(cust); continue; }
+      const km = await officeRoadKm(r.lat, r.lng);
+      const key = cust.toLowerCase().trim();
+      const prev = cache[key] || {};
+      cache[key] = { ...prev, lat: r.lat, lng: r.lng,
+                     km: km !== null ? km : (prev.km || 0),
+                     rate: prev.rate || getTransportRate(),
+                     city: prev.city || r.label, cachedAt: Date.now() };
+      autoFound.push(`${cust} (${r.source}${r.approx ? ', city centre' : ''})`);
+    }
+    if (autoFound.length) { saveTransportCache(cache); renderTripRouteOrder(); }
+    locs = tripRouteIds.map(id => getStopLocation(id));
+  }
+  const autoNote = autoFound.length
+    ? `<div style="color:#f39c12;font-size:10px;margin-top:3px">Auto-located: ${autoFound.join('; ')} — check with 📍 if a distance looks wrong.</div>`
+    : '';
+
   // If every stop has coordinates (pin or cache) → real OSRM multi-stop routing, no API key needed
-  const locs = tripRouteIds.map(id => getStopLocation(id));
   if (locs.every(Boolean)) {
     hint.textContent = 'Calculating road route…';
     try {
@@ -2786,7 +2815,7 @@ async function calculateRouteDistance() {
         const mins = Math.round(data.routes[0].duration / 60);
         document.getElementById('fTripTotalKm').value = km;
         _lastTripLegs = { stopIds: [...tripRouteIds], stopLocations: locs };
-        hint.innerHTML = `📍 Real road route: ${km} km · ~${mins} min &nbsp;<button onclick="showTripRouteOnMap()" style="background:#1a3a6a;border:none;border-radius:4px;color:#4fc3f7;padding:3px 10px;font-size:11px;cursor:pointer">🗺 View Route</button>`;
+        hint.innerHTML = `📍 Real road route: ${km} km · ~${mins} min &nbsp;<button onclick="showTripRouteOnMap()" style="background:#1a3a6a;border:none;border-radius:4px;color:#4fc3f7;padding:3px 10px;font-size:11px;cursor:pointer">🗺 View Route</button>` + autoNote;
         updateTripShare();
         return;
       }
@@ -2795,14 +2824,10 @@ async function calculateRouteDistance() {
     return;
   }
 
-  // Fallback: AI estimate using city names
-  const missingLoc = tripRouteIds.filter(id => !getStopLocation(id));
-  const missingNames = missingLoc.map(id => {
-    const inv = state.invoices.find(i => i.id === id);
-    return inv ? (inv.customer || inv.invoiceNo) : id;
-  });
-  if (missingLoc.length) {
-    hint.innerHTML = `⚠ ${missingLoc.length} stop(s) have no map location: <strong>${missingNames.join(', ')}</strong>. Click 📍 next to each to set it — that gives an exact road route and is remembered for next time. Trying AI estimate meanwhile…`;
+  // Fallback: AI estimate using city names, for stops nothing could locate
+  const missingNames = autoFailed;
+  if (missingNames.length) {
+    hint.innerHTML = `⚠ Could not locate <strong>${missingNames.join(', ')}</strong> automatically. Click 📍 next to each to set it — that gives an exact road route and is remembered for next time. Trying AI estimate meanwhile…`;
   }
   const key = getClaudeKey();
   if (!key) {
@@ -3061,115 +3086,116 @@ const MY_CITIES = [
   'Kota Kinabalu','Sandakan','Tawau','Lahad Datu',
   'Kuching','Miri','Sibu','Bintulu'
 ];
-async function lookupDistance() {
-  const btn = document.getElementById('aiEstimateBtn');
-  const hintEl = document.getElementById('transportCityHint');
-  btn.textContent = '⏳'; btn.disabled = true;
+// ---- Shared location lookup ----
+// One cascade used by both the 🔍 Find button and Calculate Route:
+// Google Places → OpenStreetMap by company name → city embedded in the name → AI city.
+// Returns { lat, lng, label, source, approx } or null.
+async function nominatimLookup(q) {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=3&countrycodes=my`, { headers: { 'Accept-Language': 'en' } });
+    const d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+
+// One-way road distance from the office, via OSRM. null if routing fails.
+async function officeRoadKm(lat, lng) {
   const office = getOffice();
+  try {
+    const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${office.lng},${office.lat};${lng},${lat}?overview=false`);
+    const d = await r.json();
+    if (d.code === 'Ok' && d.routes?.[0]) return Math.round(d.routes[0].distance / 100) / 10;
+  } catch(e) {}
+  return null;
+}
 
-  // Every lookup path funnels through here, so this is where the resolved
-  // coordinates get remembered for caching / route calculation.
-  async function routeToPoint(lat, lon) {
-    try {
-      const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${office.lng},${office.lat};${lon},${lat}?overview=false`);
-      const d = await r.json();
-      if (d.code === 'Ok' && d.routes?.[0]) {
-        currentTransportCoords = { lat: parseFloat(lat), lng: parseFloat(lon) };
-        return Math.round(d.routes[0].distance / 100) / 10;
-      }
-    } catch(e) {}
-    return null;
-  }
-  async function nominatimSearch(q) {
-    try {
-      const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=3&countrycodes=my`, { headers: { 'Accept-Language': 'en' } });
-      return await r.json();
-    } catch(e) { return []; }
-  }
-  async function geocodeAndRoute(cityStr, label) {
-    const hits = await nominatimSearch(cityStr + ', Malaysia');
-    if (!hits || !hits.length) return false;
-    const { lat, lon } = hits[0];
-    const km = await routeToPoint(lat, lon);
-    if (km === null) return false;
-    document.getElementById('fTransportKm').value = km;
-    hintEl.textContent = `${label}: ${cityStr} — ${km} km one-way. Click "+ Add to Items" to save.`;
-    updateTransportCalc();
-    btn.textContent = '🔍 Find'; btn.disabled = false;
-    return true;
-  }
+function cityFromCompanyName(name) {
+  const paren = name.match(/\(([A-Z][A-Z\s]{1,20})\)/);
+  if (paren) return paren[1].trim();
+  const up = name.toUpperCase();
+  return MY_CITIES.find(c => up.includes(c.toUpperCase())) || null;
+}
 
-  // Step 1: Google Places API (New) — most reliable for Malaysian businesses
-  hintEl.textContent = 'Searching…';
+async function resolveCustomerLocation(name, onProgress) {
+  const say = m => { if (onProgress) onProgress(m); };
+  if (!name || !name.trim()) return null;
+  const q = name.trim();
+
+  // 1. Google Places — most reliable for Malaysian businesses
   if (getGoogleKey()) {
-    const g = await googlePlacesSearch(currentCostCustomer + ' Malaysia', 1);
+    say('searching Google Places…');
+    const g = await googlePlacesSearch(q + ' Malaysia', 1);
     if (g.results && g.results.length) {
-      const hit = g.results[0];
-      const km = await routeToPoint(hit.lat, hit.lon);
-      if (km !== null) {
-        document.getElementById('fTransportKm').value = km;
-        hintEl.textContent = `🗺 Google: ${hit.display_name} — ${km} km one-way. Click "+ Add to Items" to save.`;
-        updateTransportCalc();
-        btn.textContent = '🔍 Find'; btn.disabled = false;
-        return;
-      }
-    } else if (g.error && g.error !== 'no-key') {
-      hintEl.textContent = `Google Places: ${g.error} — trying fallback…`;
+      const r = g.results[0];
+      return { lat: r.lat, lng: r.lon, label: r.display_name, source: '🗺 Google' };
     }
   }
 
-  // Step 2: Nominatim with full company name
-  const hits1 = await nominatimSearch(currentCostCustomer + ' Malaysia');
-  if (hits1 && hits1.length) {
-    const { lat, lon, display_name } = hits1[0];
-    const km = await routeToPoint(lat, lon);
-    if (km !== null) {
-      const city = display_name.split(',').slice(0,2).join(',').trim();
-      document.getElementById('fTransportKm').value = km;
-      hintEl.textContent = `📍 Found: ${city} — ${km} km one-way. Click "+ Add to Items" to save.`;
-      updateTransportCalc();
-      btn.textContent = '🔍 Find'; btn.disabled = false;
-      return;
+  // 2. OpenStreetMap on the full company name
+  say('searching OpenStreetMap…');
+  let hits = await nominatimLookup(q + ' Malaysia');
+  if (hits.length) {
+    return { lat: +hits[0].lat, lng: +hits[0].lon,
+             label: hits[0].display_name.split(',').slice(0, 3).join(',').trim(),
+             source: '📍 OpenStreetMap' };
+  }
+
+  // 3. City written into the company name, e.g. "(IPOH)" — city centre only
+  const nameCity = cityFromCompanyName(q);
+  if (nameCity) {
+    say(`routing to ${nameCity}…`);
+    hits = await nominatimLookup(nameCity + ', Malaysia');
+    if (hits.length) {
+      return { lat: +hits[0].lat, lng: +hits[0].lon, label: nameCity,
+               source: '📍 City from name', approx: true };
     }
   }
 
-  // Step 2: Extract city from name — parentheses like (IPOH), or known city keywords
-  let extractedCity = null;
-  const parenMatch = currentCostCustomer.match(/\(([A-Z][A-Z\s]{1,20})\)/);
-  if (parenMatch) extractedCity = parenMatch[1].trim();
-  if (!extractedCity) {
-    const nameUp = currentCostCustomer.toUpperCase();
-    extractedCity = MY_CITIES.find(c => nameUp.includes(c.toUpperCase())) || null;
-  }
-  if (extractedCity) {
-    hintEl.textContent = `Found city in name: ${extractedCity} — routing…`;
-    if (await geocodeAndRoute(extractedCity, '📍 City from name')) return;
-  }
-
-  // Step 3: AI identifies city → Nominatim → OSRM
-  let key = getClaudeKey();
-  if (!key) {
-    key = prompt('No Claude API key found.\nPaste your key to enable AI city lookup (saved for this session):');
-    if (key && key.trim()) { localStorage.setItem(CLAUDE_KEY_STORE, key.trim()); key = key.trim(); }
-  }
+  // 4. Ask Claude which city the company is in — city centre only
+  const key = getClaudeKey();
   if (key) {
-    hintEl.textContent = 'Asking AI for city…';
+    say('asking AI for the city…');
     try {
-      const aiResp = await fetch('https://api.anthropic.com/v1/messages', {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-allow-browser': 'true' },
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 20,
-          messages: [{ role: 'user', content: `Malaysian company: "${currentCostCustomer}". What city/town in Malaysia? Reply ONLY city and state e.g. "Ipoh, Perak". If unknown: UNKNOWN` }]
+          messages: [{ role: 'user', content: `Malaysian company: "${q}". What city/town in Malaysia? Reply ONLY city and state e.g. "Ipoh, Perak". If unknown: UNKNOWN` }]
         })
       });
-      const aiData = await aiResp.json();
-      const city = (aiData.content?.[0]?.text || '').trim().replace(/^["']|["']$/g, '');
+      const data = await resp.json();
+      const city = (data.content?.[0]?.text || '').trim().replace(/^["']|["']$/g, '');
       if (city && !/unknown/i.test(city)) {
-        if (await geocodeAndRoute(city, '🤖 AI')) return;
+        hits = await nominatimLookup(city + ', Malaysia');
+        if (hits.length) {
+          return { lat: +hits[0].lat, lng: +hits[0].lon, label: city, source: '🤖 AI', approx: true };
+        }
       }
     } catch(e) {}
+  }
+  return null;
+}
+
+async function lookupDistance() {
+  const btn = document.getElementById('aiEstimateBtn');
+  const hintEl = document.getElementById('transportCityHint');
+  btn.textContent = '⏳'; btn.disabled = true;
+
+  hintEl.textContent = 'Searching…';
+  const found = await resolveCustomerLocation(currentCostCustomer, m => { hintEl.textContent = m; });
+  if (found) {
+    const km = await officeRoadKm(found.lat, found.lng);
+    if (km !== null) {
+      currentTransportCoords = { lat: found.lat, lng: found.lng };
+      document.getElementById('fTransportKm').value = km;
+      hintEl.textContent = `${found.source}: ${found.label} — ${km} km one-way` +
+        (found.approx ? ' (city centre — check with 📍 Map)' : '') + '. Click "+ Add to Items" to save.';
+      updateTransportCalc();
+      btn.textContent = '🔍 Find'; btn.disabled = false;
+      return;
+    }
   }
 
   hintEl.innerHTML = 'Could not determine location. Click 📍 and paste the Google Maps coordinates ' +

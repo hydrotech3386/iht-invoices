@@ -3174,8 +3174,29 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 
 let _mapSearchResults = [];
 let _mapSearchTimeout = null;
+// Google Maps state
+let _gMapsLoaded = false, _gMapsCallbacks = [];
+let _useGoogleMap = false;
+let gMap = null, gMapMarker = null, gOfficeMarker = null, gRoutePoly = null;
+let _gLegLines = [], _gStopMarkers = [];
+
+function loadGoogleMapsAPI(cb) {
+  if (_gMapsLoaded) { cb(true); return; }
+  _gMapsCallbacks.push(cb);
+  if (_gMapsCallbacks.length > 1) return;
+  window._onGMapsReady = () => {
+    _gMapsLoaded = true;
+    _gMapsCallbacks.forEach(f => f(true)); _gMapsCallbacks = [];
+    delete window._onGMapsReady;
+  };
+  const s = document.createElement('script');
+  s.src = `https://maps.googleapis.com/maps/api/js?key=${getGoogleKey()}&libraries=places&callback=_onGMapsReady`;
+  s.onerror = () => { _gMapsCallbacks.forEach(f => f(false)); _gMapsCallbacks = []; };
+  document.head.appendChild(s);
+}
 
 function onMapSearchInput() {
+  if (_useGoogleMap) return; // Google Autocomplete handles it
   clearTimeout(_mapSearchTimeout);
   _mapSearchTimeout = setTimeout(doMapSearch, 500);
 }
@@ -3214,8 +3235,9 @@ function selectMapSearchResult(i) {
   document.getElementById('mapSearchResults').style.display = 'none';
   document.getElementById('mapSearchInput').value = r.display_name.split(',').slice(0, 3).join(', ');
   const lat = parseFloat(r.lat), lng = parseFloat(r.lon);
-  mapPicker.setView([lat, lng], 16);
-  onMapPickerClick({ latlng: { lat, lng } });
+  if (_useGoogleMap && gMap) { gMap.panTo({ lat, lng }); gMap.setZoom(16); }
+  else if (mapPicker) mapPicker.setView([lat, lng], 16);
+  onMapPickerClick(lat, lng);
 }
 
 let officeMarker = null;
@@ -3223,25 +3245,60 @@ let mapPickerMode = 'pick'; // 'pick' or 'route'
 let _lastTripLegs = null;
 const LEG_COLORS = ['#e74c3c','#f39c12','#2ecc71','#3498db','#9b59b6','#1abc9c','#e67e22'];
 
+function _destroyLeaflet() {
+  if (mapPicker) { try { mapPicker.remove(); } catch(e) {} mapPicker = null; officeMarker = null; }
+  const el = document.getElementById('mapPickerEl'); if (el) el.innerHTML = '';
+}
+function _destroyGMap() {
+  _clearMapOverlays();
+  if (gOfficeMarker) { gOfficeMarker.setMap(null); gOfficeMarker = null; }
+  gMap = null;
+}
+
 function _initMapPicker() {
   const office = getOffice();
-  mapPicker = L.map('mapPickerEl').setView([office.lat, office.lng], 10);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors', maxZoom: 19
-  }).addTo(mapPicker);
-  officeMarker = L.marker([office.lat, office.lng], {
-    icon: L.divIcon({ html: '<div style="font-size:22px;line-height:1">🏢</div>', className: '', iconSize: [24,24], iconAnchor: [12,12] })
-  }).addTo(mapPicker).bindTooltip('Ipoh Hydrotech Office (click map to move pin)', { permanent: false, direction: 'top' });
-  mapPicker.on('click', onMapPickerClick);
+  if (_useGoogleMap) {
+    _destroyLeaflet();
+    gMap = new google.maps.Map(document.getElementById('mapPickerEl'), {
+      center: { lat: office.lat, lng: office.lng }, zoom: 12,
+      mapTypeControl: false, streetViewControl: false, fullscreenControl: false, gestureHandling: 'greedy'
+    });
+    gOfficeMarker = new google.maps.Marker({ position: { lat: office.lat, lng: office.lng }, map: gMap, title: 'Ipoh Hydrotech Office' });
+    gMap.addListener('click', e => onMapPickerClick(e.latLng.lat(), e.latLng.lng()));
+    const searchInput = document.getElementById('mapSearchInput');
+    searchInput.placeholder = 'Search company or address…';
+    const ac = new google.maps.places.Autocomplete(searchInput, { componentRestrictions: { country: 'my' } });
+    ac.addListener('place_changed', () => {
+      const place = ac.getPlace();
+      if (!place.geometry?.location) return;
+      gMap.panTo(place.geometry.location); gMap.setZoom(16);
+      document.getElementById('mapSearchResults').style.display = 'none';
+      onMapPickerClick(place.geometry.location.lat(), place.geometry.location.lng());
+    });
+  } else {
+    _destroyGMap();
+    if (mapPicker) { try { mapPicker.remove(); } catch(e) {} mapPicker = null; }
+    mapPicker = L.map('mapPickerEl').setView([office.lat, office.lng], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors', maxZoom: 19 }).addTo(mapPicker);
+    officeMarker = L.marker([office.lat, office.lng], {
+      icon: L.divIcon({ html: '<div style="font-size:22px;line-height:1">🏢</div>', className: '', iconSize:[24,24], iconAnchor:[12,12] })
+    }).addTo(mapPicker).bindTooltip('Ipoh Hydrotech Office', { permanent: false, direction: 'top' });
+    mapPicker.on('click', e => onMapPickerClick(e.latlng.lat, e.latlng.lng));
+  }
 }
 
 function _clearMapOverlays() {
-  if (mapMarkerPin) { mapMarkerPin.remove(); mapMarkerPin = null; }
-  if (mapPicker._routeLine) { mapPicker._routeLine.remove(); mapPicker._routeLine = null; }
-  (mapPicker._legLines || []).forEach(l => l.remove());
-  mapPicker._legLines = [];
-  (mapPicker._stopMarkers || []).forEach(m => m.remove());
-  mapPicker._stopMarkers = [];
+  if (_useGoogleMap) {
+    if (gMapMarker) { gMapMarker.setMap(null); gMapMarker = null; }
+    if (gRoutePoly) { gRoutePoly.setMap(null); gRoutePoly = null; }
+    _gLegLines.forEach(l => l.setMap(null)); _gLegLines = [];
+    _gStopMarkers.forEach(m => m.setMap(null)); _gStopMarkers = [];
+  } else {
+    if (mapMarkerPin) { mapMarkerPin.remove(); mapMarkerPin = null; }
+    if (mapPicker?._routeLine) { mapPicker._routeLine.remove(); mapPicker._routeLine = null; }
+    (mapPicker?._legLines || []).forEach(l => l.remove()); if (mapPicker) mapPicker._legLines = [];
+    (mapPicker?._stopMarkers || []).forEach(m => m.remove()); if (mapPicker) mapPicker._stopMarkers = [];
+  }
 }
 
 function openMapPicker(target) {
@@ -3249,7 +3306,7 @@ function openMapPicker(target) {
   mapPickerMode = 'pick';
   mapPickerKm = 0;
   document.getElementById('mapPickerTitle').textContent = '📍 Set Delivery Location';
-  document.getElementById('mapPickerSubtitle').textContent = 'Click anywhere on the map to drop a pin';
+  document.getElementById('mapPickerSubtitle').textContent = 'Search for a company or click the map to drop a pin';
   document.getElementById('mapPickerInfo').textContent = 'No location selected';
   document.getElementById('mapPickerDist').textContent = '';
   document.getElementById('mapPickerConfirmBtn').disabled = true;
@@ -3259,18 +3316,32 @@ function openMapPicker(target) {
   document.getElementById('mapSearchInput').value = '';
   document.getElementById('mapSearchResults').style.display = 'none';
   document.getElementById('mapPickerBg').classList.add('open');
+  const doInit = () => {
+    const needReinit = (_useGoogleMap && !gMap) || (!_useGoogleMap && !mapPicker) ||
+                       (_useGoogleMap && mapPicker) || (!_useGoogleMap && gMap);
+    if (needReinit) { _initMapPicker(); }
+    else {
+      _clearMapOverlays();
+      if (_useGoogleMap && gMap) { google.maps.event.trigger(gMap, 'resize'); gMap.setCenter(getOffice()); gMap.setZoom(12); }
+      else if (mapPicker) mapPicker.invalidateSize();
+    }
+  };
   setTimeout(() => {
-    if (!mapPicker) { _initMapPicker(); } else { _clearMapOverlays(); }
-    mapPicker.invalidateSize();
+    const gKey = getGoogleKey();
+    if (gKey && !_gMapsLoaded) { loadGoogleMapsAPI(ok => { _useGoogleMap = ok; doInit(); }); }
+    else { _useGoogleMap = _gMapsLoaded && !!getGoogleKey(); doInit(); }
   }, 150);
 }
 
-async function onMapPickerClick(e) {
-  if (mapPickerMode === 'route') return; // read-only in route view
-  const { lat, lng } = e.latlng;
+async function onMapPickerClick(lat, lng) {
+  if (mapPickerMode === 'route') return;
   mapPickerLat = lat; mapPickerLng = lng;
   _clearMapOverlays();
-  mapMarkerPin = L.marker([lat, lng]).addTo(mapPicker);
+  if (_useGoogleMap) {
+    gMapMarker = new google.maps.Marker({ position: { lat, lng }, map: gMap });
+  } else {
+    mapMarkerPin = L.marker([lat, lng]).addTo(mapPicker);
+  }
   document.getElementById('mapPickerInfo').textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   document.getElementById('mapPickerDist').textContent = 'Calculating road distance…';
   document.getElementById('mapPickerConfirmBtn').disabled = true;
@@ -3281,17 +3352,20 @@ async function onMapPickerClick(e) {
     const data = await resp.json();
     if (data.code === 'Ok' && data.routes.length) {
       const route = data.routes[0];
-      mapPickerKm = Math.round(route.distance / 1000);
+      mapPickerKm = Math.round(route.distance / 100) / 10;
       const mins = Math.round(route.duration / 60);
-      document.getElementById('mapPickerDist').textContent = `${mapPickerKm} km one-way · ~${mins} min (actual road route)`;
-      mapPicker._routeLine = L.geoJSON(route.geometry, { style: { color:'#5dfc8d', weight:3, opacity:0.8 } }).addTo(mapPicker);
-    } else {
-      throw new Error('No route');
-    }
+      document.getElementById('mapPickerDist').textContent = `${mapPickerKm} km one-way · ~${mins} min`;
+      if (_useGoogleMap) {
+        const path = route.geometry.coordinates.map(([ln, la]) => ({ lat: la, lng: ln }));
+        gRoutePoly = new google.maps.Polyline({ path, map: gMap, strokeColor: '#5dfc8d', strokeWeight: 4, strokeOpacity: 0.8 });
+      } else {
+        mapPicker._routeLine = L.geoJSON(route.geometry, { style: { color:'#5dfc8d', weight:3, opacity:0.8 } }).addTo(mapPicker);
+      }
+    } else throw new Error('No route');
   } catch(e) {
     mapPickerKm = Math.round(haversineKm(office.lat, office.lng, lat, lng) * 1.35);
-    document.getElementById('mapPickerDist').textContent = `≈ ${mapPickerKm} km one-way (estimated — routing unavailable)`;
-    mapPicker._routeLine = L.polyline([[office.lat, office.lng],[lat,lng]], { color:'#f39c12', weight:2, dashArray:'6,4', opacity:0.7 }).addTo(mapPicker);
+    document.getElementById('mapPickerDist').textContent = `≈ ${mapPickerKm} km one-way (estimated)`;
+    if (!_useGoogleMap && mapPicker) mapPicker._routeLine = L.polyline([[office.lat,office.lng],[lat,lng]], { color:'#f39c12', weight:2, dashArray:'6,4', opacity:0.7 }).addTo(mapPicker);
   }
   document.getElementById('mapPickerConfirmBtn').disabled = false;
 }
@@ -3301,8 +3375,9 @@ function useMyLocation() {
   document.getElementById('mapPickerInfo').textContent = 'Getting your location…';
   navigator.geolocation.getCurrentPosition(pos => {
     const lat = pos.coords.latitude, lng = pos.coords.longitude;
-    mapPicker.setView([lat, lng], 16);
-    onMapPickerClick({ latlng: { lat, lng } });
+    if (_useGoogleMap && gMap) { gMap.panTo({ lat, lng }); gMap.setZoom(16); }
+    else if (mapPicker) mapPicker.setView([lat, lng], 16);
+    onMapPickerClick(lat, lng);
   }, () => {
     document.getElementById('mapPickerInfo').textContent = 'Could not get location. Click the map manually.';
   });
@@ -3333,9 +3408,10 @@ function openMapPickerForTripInv(invId) {
   const existing = tripInvLocations[invId];
   if (existing) {
     setTimeout(() => {
-      mapPicker.setView([existing.lat, existing.lng], 15);
-      onMapPickerClick({ latlng: { lat: existing.lat, lng: existing.lng } });
-    }, 300);
+      if (_useGoogleMap && gMap) { gMap.panTo({ lat: existing.lat, lng: existing.lng }); gMap.setZoom(15); }
+      else if (mapPicker) mapPicker.setView([existing.lat, existing.lng], 15);
+      onMapPickerClick(existing.lat, existing.lng);
+    }, 350);
   }
 }
 
@@ -3349,7 +3425,6 @@ async function showTripRouteOnMap() {
   const office = getOffice();
   const allStops = [office, ..._lastTripLegs.stopLocations, office];
 
-  // Switch map to route-view mode
   mapPickerMode = 'route';
   document.getElementById('mapPickerTitle').textContent = '🗺 Trip Route Preview';
   document.getElementById('mapPickerSubtitle').textContent = `${_lastTripLegs.stopLocations.length} stop(s) — fetching road segments…`;
@@ -3361,12 +3436,15 @@ async function showTripRouteOnMap() {
   document.getElementById('mapSearchResults').style.display = 'none';
   document.getElementById('mapPickerBg').classList.add('open');
 
-  setTimeout(async () => {
-    if (!mapPicker) { _initMapPicker(); } else { _clearMapOverlays(); }
-    mapPicker.invalidateSize();
+  const doRoute = async () => {
+    const needReinit = (_useGoogleMap && !gMap) || (!_useGoogleMap && !mapPicker);
+    if (needReinit) { _initMapPicker(); } else { _clearMapOverlays(); }
+    if (_useGoogleMap && gMap) google.maps.event.trigger(gMap, 'resize');
+    else if (mapPicker) mapPicker.invalidateSize();
 
-    const bounds = L.latLngBounds();
-    // Draw each leg in a different color
+    const gBounds = _useGoogleMap ? new google.maps.LatLngBounds() : null;
+    const lBounds = !_useGoogleMap ? L.latLngBounds() : null;
+
     for (let i = 0; i < allStops.length - 1; i++) {
       const from = allStops[i], to = allStops[i + 1];
       const color = LEG_COLORS[i % LEG_COLORS.length];
@@ -3374,38 +3452,63 @@ async function showTripRouteOnMap() {
         const resp = await fetch(`https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`);
         const data = await resp.json();
         if (data.code === 'Ok' && data.routes.length) {
-          const line = L.geoJSON(data.routes[0].geometry, { style: { color, weight: 5, opacity: 0.85 } }).addTo(mapPicker);
-          mapPicker._legLines.push(line);
-          bounds.extend(line.getBounds());
+          if (_useGoogleMap) {
+            const path = data.routes[0].geometry.coordinates.map(([ln, la]) => ({ lat: la, lng: ln }));
+            const poly = new google.maps.Polyline({ path, map: gMap, strokeColor: color, strokeWeight: 5, strokeOpacity: 0.85 });
+            _gLegLines.push(poly); path.forEach(p => gBounds.extend(p));
+          } else {
+            const line = L.geoJSON(data.routes[0].geometry, { style: { color, weight:5, opacity:0.85 } }).addTo(mapPicker);
+            mapPicker._legLines.push(line); lBounds.extend(line.getBounds());
+          }
         }
       } catch(e) {
-        const line = L.polyline([[from.lat, from.lng],[to.lat, to.lng]], { color, weight: 3, dashArray:'6,4' }).addTo(mapPicker);
-        mapPicker._legLines.push(line);
+        if (_useGoogleMap) {
+          const poly = new google.maps.Polyline({ path: [{ lat:from.lat, lng:from.lng }, { lat:to.lat, lng:to.lng }], map: gMap, strokeColor: color, strokeWeight: 3, strokeOpacity: 0.7 });
+          _gLegLines.push(poly);
+        } else {
+          const line = L.polyline([[from.lat,from.lng],[to.lat,to.lng]], { color, weight:3, dashArray:'6,4' }).addTo(mapPicker);
+          mapPicker._legLines.push(line);
+        }
       }
     }
 
-    // Office start/end marker
-    const officeIcon = L.divIcon({ html: '<div style="font-size:22px;line-height:1">🏢</div>', className: '', iconSize:[24,24], iconAnchor:[12,12] });
-    const om = L.marker([office.lat, office.lng], { icon: officeIcon }).addTo(mapPicker).bindTooltip('Ipoh Hydrotech (start/end)', { direction:'top' });
-    mapPicker._stopMarkers.push(om);
-    bounds.extend([office.lat, office.lng]);
+    // Office marker
+    if (_useGoogleMap) {
+      const om = new google.maps.Marker({ position: { lat: office.lat, lng: office.lng }, map: gMap, title: 'Ipoh Hydrotech (start/end)' });
+      _gStopMarkers.push(om); gBounds.extend({ lat: office.lat, lng: office.lng });
+    } else {
+      const offIcon = L.divIcon({ html: '<div style="font-size:22px;line-height:1">🏢</div>', className:'', iconSize:[24,24], iconAnchor:[12,12] });
+      const om = L.marker([office.lat, office.lng], { icon: offIcon }).addTo(mapPicker).bindTooltip('Ipoh Hydrotech (start/end)', { direction:'top' });
+      mapPicker._stopMarkers.push(om); lBounds.extend([office.lat, office.lng]);
+    }
 
     // Numbered stop markers
     _lastTripLegs.stopLocations.forEach((loc, i) => {
       const inv = state.invoices.find(inv => inv.id === _lastTripLegs.stopIds[i]);
       const label = inv ? inv.customer : `Stop ${i+1}`;
       const color = LEG_COLORS[i % LEG_COLORS.length];
-      const icon = L.divIcon({
-        html: `<div style="background:${color};color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,0.5)">${i+1}</div>`,
-        className: '', iconSize:[24,24], iconAnchor:[12,12]
-      });
-      const m = L.marker([loc.lat, loc.lng], { icon }).addTo(mapPicker).bindTooltip(label, { direction:'top', permanent: false });
-      mapPicker._stopMarkers.push(m);
-      bounds.extend([loc.lat, loc.lng]);
+      if (_useGoogleMap) {
+        const m = new google.maps.Marker({ position: { lat: loc.lat, lng: loc.lng }, map: gMap, title: label,
+          label: { text: String(i+1), color: '#fff', fontWeight: 'bold', fontSize: '12px' },
+          icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 14 }
+        });
+        _gStopMarkers.push(m); gBounds.extend({ lat: loc.lat, lng: loc.lng });
+      } else {
+        const icon = L.divIcon({ html: `<div style="background:${color};color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,0.5)">${i+1}</div>`, className:'', iconSize:[24,24], iconAnchor:[12,12] });
+        const m = L.marker([loc.lat, loc.lng], { icon }).addTo(mapPicker).bindTooltip(label, { direction:'top' });
+        mapPicker._stopMarkers.push(m); lBounds.extend([loc.lat, loc.lng]);
+      }
     });
 
-    if (bounds.isValid()) mapPicker.fitBounds(bounds, { padding: [30, 30] });
+    if (_useGoogleMap && gBounds && !gBounds.isEmpty()) gMap.fitBounds(gBounds, { padding: 40 });
+    else if (!_useGoogleMap && lBounds && lBounds.isValid()) mapPicker.fitBounds(lBounds, { padding:[30,30] });
     document.getElementById('mapPickerSubtitle').textContent = `${_lastTripLegs.stopLocations.length} stop(s) shown. Each color = one road segment.`;
+  };
+
+  setTimeout(() => {
+    const gKey = getGoogleKey();
+    if (gKey && !_gMapsLoaded) { loadGoogleMapsAPI(ok => { _useGoogleMap = ok; doRoute(); }); }
+    else { _useGoogleMap = _gMapsLoaded && !!getGoogleKey(); doRoute(); }
   }, 200);
 }
 

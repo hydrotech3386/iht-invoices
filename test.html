@@ -3038,8 +3038,34 @@ async function lookupDistance() {
     return true;
   }
 
-  // Step 1: Nominatim with full company name
+  // Step 1: Google Places API (most reliable for Malaysian businesses)
   hintEl.textContent = 'Searching…';
+  const gKey = getGoogleKey();
+  if (gKey) {
+    try {
+      const gResp = await fetch('https://places.googleapis.com/v1/places:searchText', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': gKey, 'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location' },
+        body: JSON.stringify({ textQuery: currentCostCustomer + ' Malaysia', regionCode: 'MY', maxResultCount: 1 })
+      });
+      const gData = await gResp.json();
+      const place = gData.places?.[0];
+      if (place?.location) {
+        const { latitude: lat, longitude: lon } = place.location;
+        const km = await routeToPoint(lat, lon);
+        if (km !== null) {
+          const label = place.formattedAddress || place.displayName?.text || currentCostCustomer;
+          document.getElementById('fTransportKm').value = km;
+          hintEl.textContent = `🗺 Google: ${label} — ${km} km one-way. Click "+ Add to Items" to save.`;
+          updateTransportCalc();
+          btn.textContent = '🔍 Find'; btn.disabled = false;
+          return;
+        }
+      }
+    } catch(e) {}
+  }
+
+  // Step 2: Nominatim with full company name
   const hits1 = await nominatimSearch(currentCostCustomer + ' Malaysia');
   if (hits1 && hits1.length) {
     const { lat, lon, display_name } = hits1[0];
@@ -4438,6 +4464,16 @@ function renderUserMgmt() {
         <button onclick="saveClaudeApiKey()" style="background:#8e44ad;border:none;color:#fff;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap">Save Key</button>
       </div>
       <div style="font-size:11px;color:#555;margin-top:6px">${maskedKey ? '✓ Key configured — all staff can scan invoices.' : 'No key set — paste your Claude API key (sk-ant-...) to enable scanning for all staff.'}</div>
+    </div>
+    <div style="margin-bottom:16px;padding:12px;background:#0f3460;border-radius:8px;border:1px solid #1a3a5c">
+      <div style="font-size:11px;color:#aaa;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🗺 Google API Key (Distance Lookup)</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="text" id="googleKeyInput" placeholder="AIzaSy..."
+          value="${getGoogleKey() ? '••••••••' + getGoogleKey().slice(-4) : ''}"
+          style="flex:1;min-width:180px;background:#1a1a2e;border:1px solid #333;color:#fff;border-radius:6px;padding:7px 10px;font-size:13px">
+        <button onclick="saveGoogleApiKey()" style="background:#1a73e8;border:none;color:#fff;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap">Save Key</button>
+      </div>
+      <div style="font-size:11px;color:#555;margin-top:6px">${getGoogleKey() ? '✓ Google Places enabled — distance lookup active.' : 'Enables accurate distance lookup by company name.'}</div>
     </div>` : '';
 
   content.innerHTML = botSection + `<table class="user-table">
@@ -4975,6 +5011,8 @@ function setupBackToTop() {
 // ── Invoice Scanner ──────────────────────────────────────────
 const CLAUDE_KEY_STORE = 'iht_claude_key';
 function getClaudeKey() { return appSettings.claudeApiKey || localStorage.getItem(CLAUDE_KEY_STORE) || ''; }
+const GOOGLE_KEY_STORE = 'iht_google_key';
+function getGoogleKey() { return appSettings.googleApiKey || localStorage.getItem(GOOGLE_KEY_STORE) || ''; }
 
 function openScanInvoice() {
   if (!session || session.role !== 'account') return;
@@ -4995,6 +5033,16 @@ async function saveApiKeyAndScan() {
   setTimeout(() => document.getElementById('scanFileInput').click(), 150);
 }
 
+async function saveGoogleApiKey() {
+  const inp = document.getElementById('googleKeyInput');
+  const key = inp ? inp.value.trim() : '';
+  if (!key || key.startsWith('•')) { alert('Please paste your full Google API key.'); return; }
+  appSettings.googleApiKey = key;
+  localStorage.setItem(GOOGLE_KEY_STORE, key);
+  syncSettingToFirebase('googleApiKey', key);
+  alert('Google API key saved. Distance lookup will now use Google Places.');
+  renderUserMgmt();
+}
 async function saveClaudeApiKey() {
   const inp = document.getElementById('claudeKeyInput');
   const key = inp ? inp.value.trim() : '';

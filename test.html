@@ -702,12 +702,17 @@
 </div>
 
 <!-- Map Picker Modal -->
-<!-- Vehicle Rates Modal -->
+<!-- Transport Rate Modal -->
 <div class="modal-bg" id="vehicleRatesBg" style="z-index:9600">
   <div class="modal" style="max-width:320px">
-    <h2>🚗 Vehicle Rates</h2>
-    <div style="font-size:12px;color:#888;margin-bottom:14px">Cost per kilometre for each vehicle. Changes apply immediately.</div>
-    <div id="vehicleRatesList"></div>
+    <h2>🚚 Transport Rate</h2>
+    <div style="font-size:12px;color:#888;margin-bottom:14px">Cost per kilometre, applied to all transport. Changes apply immediately.</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <span style="color:#aaa;font-size:12px">RM</span>
+      <input id="transportRateInput" type="number" min="0" step="0.01"
+        style="flex:1;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px">
+      <span style="color:#aaa;font-size:12px">/km</span>
+    </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeVehicleRatesModal()">Cancel</button>
       <button class="btn-confirm" onclick="saveVehicleRatesModal()">Save</button>
@@ -738,12 +743,6 @@
         <div style="min-width:70px">
           <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">One-way km</label>
           <input id="cacheNewKm" type="number" min="0" placeholder="0" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px;box-sizing:border-box">
-        </div>
-        <div style="min-width:80px">
-          <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">Vehicle</label>
-          <select id="cacheNewVehicle" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px">
-            <option>Lorry</option><option>Van</option><option>Maxus</option>
-          </select>
         </div>
         <button onclick="addNewCacheEntry()" style="background:#1a6a3a;border:none;border-radius:4px;color:#fff;padding:6px 14px;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0">+ Add</button>
       </div>
@@ -839,10 +838,10 @@
     <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:8px">
       <div style="flex:1">
         <label style="font-size:11px;color:#aaa;display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-          <span>Vehicle</span>
-          <button onclick="openVehicleRatesModal()" style="background:none;border:none;color:#4fc3f7;font-size:11px;cursor:pointer;padding:0;text-decoration:underline">Edit Rates</button>
+          <span>Rate</span>
+          <button onclick="openVehicleRatesModal()" style="background:none;border:none;color:#4fc3f7;font-size:11px;cursor:pointer;padding:0;text-decoration:underline">Edit Rate</button>
         </label>
-        <select id="fTransportVehicle" onchange="onVehicleChange('transport')" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px"></select>
+        <div id="transportRateDisplay" style="background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px">RM 1.20 / km</div>
       </div>
       <div style="flex:1">
         <label style="font-size:11px;color:#aaa;display:block;margin-bottom:3px">Distance (km, one-way)</label>
@@ -866,10 +865,6 @@
       </label>
     </div>
     <div id="tripSection" style="display:none">
-      <div style="margin-bottom:8px">
-        <label style="font-size:11px;color:#aaa;display:block;margin-bottom:3px">Vehicle</label>
-        <select id="fTripVehicle" onchange="onVehicleChange('trip')" style="width:200px;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px"></select>
-      </div>
       <div style="font-size:12px;color:#aaa;margin-bottom:6px">Select invoices on this trip:</div>
       <div id="tripInvoiceList" style="max-height:160px;overflow-y:auto;border:1px solid #1a3a6a;border-radius:6px;padding:4px;margin-bottom:10px"></div>
       <div style="font-size:12px;color:#aaa;margin-bottom:6px">Delivery order (Ipoh → ... → Ipoh):</div>
@@ -1624,9 +1619,9 @@ function onLoggedIn() {
   firebase.database().ref('appSettings').once('value').then(snap => {
     if (snap.val()) {
       Object.assign(appSettings, snap.val());
-      // Sync vehicle rates from Firebase → localStorage → dropdowns
-      if (appSettings.vehicleRates) {
-        localStorage.setItem(VEHICLE_RATES_KEY, JSON.stringify(appSettings.vehicleRates));
+      // Sync transport rate from Firebase → localStorage → display
+      if (appSettings.transportRate) {
+        localStorage.setItem(TRANSPORT_RATE_KEY, String(appSettings.transportRate));
         populateVehicleDropdowns();
       }
       // Sync transport cache from Firebase → localStorage
@@ -2612,9 +2607,6 @@ function toggleTripSection() {
   const enabled = document.getElementById('tripEnabled').checked;
   document.getElementById('tripSection').style.display = enabled ? 'block' : 'none';
   if (enabled) {
-    // Sync vehicle selection from transport section to trip section
-    const transportVehicle = document.getElementById('fTransportVehicle').value;
-    if (transportVehicle) document.getElementById('fTripVehicle').value = transportVehicle;
     tripRouteIds = [];
     tripInvLocations = {};
     tripInvShares = {};
@@ -2707,7 +2699,7 @@ function moveTripStop(id, dir) {
 }
 function updateTripShare() {
   const km = parseFloat(document.getElementById('fTripTotalKm').value) || 0;
-  const { rate } = getVehicleInfo('fTripVehicle');
+  const rate = getTransportRate();
   const totalCost = Math.round(km * rate * 100) / 100;
 
   const checkedIds = Array.from(document.querySelectorAll('.trip-inv-cb:checked')).map(cb => cb.dataset.id);
@@ -2843,55 +2835,34 @@ async function calculateRouteDistance() {
 }
 
 // ---- Transport cost calculator ----
-// ---- Vehicle Rates ----
-const VEHICLE_RATES_KEY = 'iht_vehicle_rates';
-const VEHICLE_DEFAULTS = { Lorry: 1.20, Van: 1.00, Maxus: 1.00 };
+// ---- Transport Rate ----
+// One flat rate per km for all transport — no vehicle types.
+const TRANSPORT_RATE_KEY = 'iht_transport_rate';
+const TRANSPORT_RATE_DEFAULT = 1.20;
 
-function getVehicleRates() {
-  try { const s = localStorage.getItem(VEHICLE_RATES_KEY); return s ? { ...VEHICLE_DEFAULTS, ...JSON.parse(s) } : { ...VEHICLE_DEFAULTS }; }
-  catch { return { ...VEHICLE_DEFAULTS }; }
+function getTransportRate() {
+  const v = parseFloat(localStorage.getItem(TRANSPORT_RATE_KEY));
+  return (!isNaN(v) && v > 0) ? v : TRANSPORT_RATE_DEFAULT;
 }
-function populateVehicleDropdowns(keepSelection) {
-  const rates = getVehicleRates();
-  const opts = Object.entries(rates).map(([name, rate]) =>
-    `<option value="${name}|${rate.toFixed(2)}">${name} (RM${rate.toFixed(2)}/km)</option>`
-  ).join('');
-  ['fTransportVehicle', 'fTripVehicle'].forEach(selId => {
-    const el = document.getElementById(selId);
-    if (!el) return;
-    const prev = keepSelection ? el.value.split('|')[0] : '';
-    el.innerHTML = opts;
-    if (prev) {
-      const match = Array.from(el.options).find(o => o.value.startsWith(prev + '|'));
-      if (match) el.value = match.value;
-    }
-  });
+function populateVehicleDropdowns() {
+  const el = document.getElementById('transportRateDisplay');
+  if (el) el.textContent = `RM ${getTransportRate().toFixed(2)} / km`;
 }
 function openVehicleRatesModal() {
-  const rates = getVehicleRates();
-  document.getElementById('vehicleRatesList').innerHTML = Object.entries(rates).map(([name, rate]) =>
-    `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-      <span style="color:#e0e0e0;min-width:55px;font-size:13px">${name}</span>
-      <span style="color:#aaa;font-size:12px">RM</span>
-      <input id="vrate-${name}" type="number" value="${rate.toFixed(2)}" min="0" step="0.01"
-        style="flex:1;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px">
-      <span style="color:#aaa;font-size:12px">/km</span>
-    </div>`
-  ).join('');
+  document.getElementById('transportRateInput').value = getTransportRate().toFixed(2);
   document.getElementById('vehicleRatesBg').classList.add('open');
 }
 function closeVehicleRatesModal() {
   document.getElementById('vehicleRatesBg').classList.remove('open');
 }
 function saveVehicleRatesModal() {
-  const rates = getVehicleRates();
-  Object.keys(rates).forEach(name => {
-    const el = document.getElementById(`vrate-${name}`);
-    if (el) { const v = parseFloat(el.value); if (!isNaN(v) && v >= 0) rates[name] = v; }
-  });
-  localStorage.setItem(VEHICLE_RATES_KEY, JSON.stringify(rates));
-  syncSettingToFirebase('vehicleRates', rates);
-  populateVehicleDropdowns(true);
+  const v = parseFloat(document.getElementById('transportRateInput').value);
+  if (isNaN(v) || v <= 0) { alert('Enter a rate greater than 0.'); return; }
+  localStorage.setItem(TRANSPORT_RATE_KEY, String(v));
+  syncSettingToFirebase('transportRate', v);
+  populateVehicleDropdowns();
+  updateTransportCalc();
+  updateTripShare();
   closeVehicleRatesModal();
 }
 
@@ -2920,13 +2891,10 @@ function addNewCacheEntry() {
   const customer = document.getElementById('cacheNewCustomer').value.trim();
   const city = document.getElementById('cacheNewCity').value.trim();
   const km = parseFloat(document.getElementById('cacheNewKm').value) || 0;
-  const vehicle = document.getElementById('cacheNewVehicle').value;
   if (!customer) { alert('Customer name is required.'); return; }
   if (!km) { alert('Enter a distance in km.'); return; }
-  const rates = getVehicleRates();
-  const rate = rates[vehicle] || 1.00;
   const cache = getTransportCache();
-  cache[customer.toLowerCase().trim()] = { km, rate, vehicle, city: city || customer, cachedAt: Date.now() };
+  cache[customer.toLowerCase().trim()] = { km, rate: getTransportRate(), city: city || customer, cachedAt: Date.now() };
   saveTransportCache(cache);
   document.getElementById('cacheNewCustomer').value = '';
   document.getElementById('cacheNewCity').value = '';
@@ -2949,15 +2917,12 @@ function renderCacheManagerList() {
     const dateStr = e.cachedAt ? new Date(e.cachedAt).toLocaleDateString('en-MY') : '—';
     const eid = `cm${idx}`;
     const displayName = k.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-    const vOpts = ['Lorry','Van','Maxus'].map(v =>
-      `<option value="${v}" ${e.vehicle===v?'selected':''}>${v}</option>`).join('');
     return `<div style="border:1px solid #1a3a6a;border-radius:6px;padding:10px 12px;margin-bottom:8px;background:#071628" data-idx="${idx}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
         <div style="flex:1;min-width:0">
           <div style="font-size:12px;font-weight:600;color:#4fc3f7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${displayName}</div>
           <div id="${eid}-view" style="margin-top:5px;display:flex;gap:12px;flex-wrap:wrap">
             <span style="font-size:12px;color:#e0e0e0">📍 ${e.city||'—'}</span>
-            <span style="font-size:12px;color:#e0e0e0">🚗 ${e.vehicle||'—'}</span>
             <span style="font-size:12px;color:#5dfc8d">${e.km||'—'} km one-way</span>
             <span style="font-size:11px;color:#555">${dateStr}</span>
           </div>
@@ -2970,10 +2935,6 @@ function renderCacheManagerList() {
               <div>
                 <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">One-way km</label>
                 <input id="${eid}-km" type="number" value="${e.km||''}" min="0" style="width:80px;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px">
-              </div>
-              <div>
-                <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">Vehicle</label>
-                <select id="${eid}-veh" style="background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px">${vOpts}</select>
               </div>
               <button data-action="save" data-idx="${idx}" style="background:#1a6a3a;border:none;border-radius:4px;color:#fff;padding:5px 12px;font-size:12px;cursor:pointer">Save</button>
               <button data-action="cancel" data-idx="${idx}" style="background:none;border:1px solid #555;border-radius:4px;color:#aaa;padding:5px 10px;font-size:12px;cursor:pointer">Cancel</button>
@@ -3007,7 +2968,6 @@ function renderCacheManagerList() {
       if (cache2[k]) {
         cache2[k].city = document.getElementById(`${eid}-city`).value.trim();
         cache2[k].km = parseFloat(document.getElementById(`${eid}-km`).value) || cache2[k].km;
-        cache2[k].vehicle = document.getElementById(`${eid}-veh`).value;
         saveTransportCache(cache2);
       }
       renderCacheManagerList();
@@ -3029,15 +2989,12 @@ function initTransportCalc(customerName) {
   currentCostCustomer = customerName || '';
   const cached = getTransportCache()[(customerName||'').toLowerCase().trim()];
   const kmEl = document.getElementById('fTransportKm');
-  const vehicleEl = document.getElementById('fTransportVehicle');
   const hintEl = document.getElementById('transportCityHint');
   const cacheEl = document.getElementById('transportCacheInfo');
+  populateVehicleDropdowns();
   if (cached) {
     kmEl.value = cached.km;
-    if (cached.vehicle) {
-      for (const opt of vehicleEl.options) { if (opt.value.startsWith(cached.vehicle + '|')) { opt.selected = true; break; } }
-    }
-    cacheEl.textContent = `✓ Cached: ${cached.city}, ${cached.km} km — ${cached.vehicle || 'vehicle not set'}`;
+    cacheEl.textContent = `✓ Cached: ${cached.city}, ${cached.km} km`;
     cacheEl.style.display = 'block';
     hintEl.textContent = '';
   } else {
@@ -3047,17 +3004,9 @@ function initTransportCalc(customerName) {
   }
   updateTransportCalc();
 }
-function getVehicleInfo(selectId) {
-  const val = (document.getElementById(selectId).value || 'Lorry|1.20').split('|');
-  return { name: val[0], rate: parseFloat(val[1]) || 1.00 };
-}
-function onVehicleChange(target) {
-  if (target === 'transport') updateTransportCalc();
-  else updateTripShare();
-}
 function updateTransportCalc() {
   const km = parseFloat(document.getElementById('fTransportKm').value) || 0;
-  const { rate } = getVehicleInfo('fTransportVehicle');
+  const rate = getTransportRate();
   document.getElementById('transportCalcAmt').textContent = fmtRM(Math.round(km * 2 * rate * 100) / 100);
 }
 const MY_CITIES = [
@@ -3183,9 +3132,9 @@ async function lookupDistance() {
 }
 function addTransportToCost() {
   const km = parseFloat(document.getElementById('fTransportKm').value) || 0;
-  const { name: vehicleName, rate } = getVehicleInfo('fTransportVehicle');
+  const rate = getTransportRate();
   const amt = Math.round(km * 2 * rate * 100) / 100;
-  if (!amt) { alert('Enter a distance and select a vehicle first.'); return; }
+  if (!amt) { alert('Enter a distance first.'); return; }
   // Check for existing transport row and offer to replace
   let existingRow = null;
   document.querySelectorAll('#costItemsList .cost-item-row').forEach(row => {
@@ -3197,18 +3146,18 @@ function addTransportToCost() {
     if (!confirm(`Existing transport entry found (RM ${oldAmt}).\nReplace with new amount (${fmtRM(amt)})?`)) return;
     existingRow.remove();
   }
-  _addCostItemRow(`Transport (${vehicleName})`, amt);
+  _addCostItemRow('Transport', amt);
   _updateCostTotal();
-  // Cache confirmed distance + vehicle
+  // Cache confirmed distance
   const hint = document.getElementById('transportCityHint').textContent;
   const cityMatch = hint.match(/(?:Found|found city):\s*([^—\n]+?)(?:\s*—|\s*,\s*\d)/);
   const city = cityMatch ? cityMatch[1].trim() : currentCostCustomer;
   const cache = getTransportCache();
-  cache[currentCostCustomer.toLowerCase().trim()] = { km, rate, vehicle: vehicleName, city, cachedAt: Date.now() };
+  cache[currentCostCustomer.toLowerCase().trim()] = { km, rate, city, cachedAt: Date.now() };
   saveTransportCache(cache);
-  document.getElementById('transportCacheInfo').textContent = `✓ Cached: ${city}, ${km} km — ${vehicleName}`;
+  document.getElementById('transportCacheInfo').textContent = `✓ Cached: ${city}, ${km} km`;
   document.getElementById('transportCacheInfo').style.display = 'block';
-  document.getElementById('transportCityHint').textContent = `✓ Transport (${vehicleName}) added to cost items.`;
+  document.getElementById('transportCityHint').textContent = '✓ Transport added to cost items.';
 }
 
 // ---- Map Picker ----
@@ -3684,13 +3633,12 @@ function saveCostModal() {
   // Delivery trip: calculate share and apply to other invoices
   const tripEnabled = document.getElementById('tripEnabled').checked;
   if (tripEnabled) {
-    const { name: tripVehicle } = getVehicleInfo('fTripVehicle');
     const checkedBoxes = document.querySelectorAll('.trip-inv-cb:checked');
     const tripInvIds = Array.from(checkedBoxes).map(cb => cb.dataset.id).filter(id => id !== costModalId);
     const currentShare = tripInvShares[costModalId];
     if (currentShare && currentShare.amount > 0) {
       const tripId = uid();
-      items.push({ desc: `Transport (${tripVehicle} – Shared Trip)`, amount: currentShare.amount, tripId });
+      items.push({ desc: 'Transport (Shared Trip)', amount: currentShare.amount, tripId });
       const hasExisting = tripInvIds.some(tid => {
         const tInv = state.invoices.find(i => i.id === tid);
         return tInv && (tInv.costItems||[]).some(it => it.desc.toLowerCase().startsWith('transport') && !it.desc.includes('Shared Trip'));
@@ -3704,7 +3652,7 @@ function saveCostModal() {
         if (!tShare || tShare.amount <= 0) return;
         if (!Array.isArray(tInv.costItems)) tInv.costItems = [];
         tInv.costItems = tInv.costItems.filter(it => !it.desc.includes('Shared Trip'));
-        tInv.costItems.push({ desc: `Transport (${tripVehicle} – Shared Trip)`, amount: tShare.amount, tripId });
+        tInv.costItems.push({ desc: 'Transport (Shared Trip)', amount: tShare.amount, tripId });
         tInv.cost = tInv.costItems.reduce((s, i) => s + i.amount, 0);
         tInv.updatedAt = Date.now();
         appliedTo.push(`${tInv.invoiceNo||tInv.id} — ${fmtRM(tShare.amount)} (${Math.round(tShare.ratio*100)}%)`);

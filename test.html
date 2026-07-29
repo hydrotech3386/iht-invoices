@@ -2655,22 +2655,24 @@ function renderTripRouteOrder() {
     const cust = inv ? (inv.customer||'—') : '—';
     const city = cache[(cust).toLowerCase().trim()]?.city || '';
     const isCurrent = id === costModalId;
-    const loc = tripInvLocations[id];
+    const loc = getStopLocation(id);   // map pin for this trip, or coordinates from cache
+    const pinned = !!loc;              // has real coordinates → routable
     const share = tripInvShares[id];
 
     const distKm = loc ? loc.km : (cache[(cust).toLowerCase().trim()]?.km || 0);
-    const hasAnyLocation = loc || distKm > 0;
-    // Pin button: green=pin set, yellow=cache only, orange=nothing
-    const pinColor = loc ? '#5dfc8d' : (distKm > 0 ? '#f39c12' : '#e74c3c');
-    const pinBorder = loc ? '#5dfc8d' : (distKm > 0 ? '#f39c12' : '#e74c3c');
-    const locBtnStyle = `background:${hasAnyLocation?'none':'rgba(231,76,60,0.1)'};border:1px solid ${pinBorder};border-radius:3px;color:${pinColor};cursor:pointer;padding:1px 5px;font-size:11px;flex-shrink:0${!hasAnyLocation?';font-weight:700':''}`;
+    const hasAnyLocation = pinned || distKm > 0;
+    // Pin button: green=coordinates known, orange=km only (can't route), red=nothing
+    const pinColor = pinned ? '#5dfc8d' : (distKm > 0 ? '#f39c12' : '#e74c3c');
+    const locBtnStyle = `background:${hasAnyLocation?'none':'rgba(231,76,60,0.1)'};border:1px solid ${pinColor};border-radius:3px;color:${pinColor};cursor:pointer;padding:1px 5px;font-size:11px;flex-shrink:0${!hasAnyLocation?';font-weight:700':''}`;
 
-    const kmBadge = distKm > 0 ? `<span style="color:${loc?'#aaa':'#f39c12'};font-size:10px;flex-shrink:0">${distKm}km${loc?'':' ⚡'}</span>` : '';
-    const missingBadge = !hasAnyLocation ? `<span style="color:#e74c3c;font-size:10px;flex-shrink:0">⚠ no loc</span>` : '';
+    const kmBadge = distKm > 0 ? `<span style="color:${pinned?'#aaa':'#f39c12'};font-size:10px;flex-shrink:0">${distKm}km${pinned?'':' ⚡'}</span>` : '';
+    const missingBadge = !pinned
+      ? `<span style="color:${distKm>0?'#f39c12':'#e74c3c'};font-size:10px;flex-shrink:0">⚠ no map pin</span>` : '';
     const shareBadge = share && share.amount > 0
       ? `<span style="color:#5dfc8d;font-size:11px;font-weight:600;flex-shrink:0">${fmtRM(share.amount)}</span><span style="color:#555;font-size:10px;flex-shrink:0">(${Math.round(share.ratio*100)}%)</span>`
       : '';
-    const clearBtn = loc
+    // ✕ only clears a pin set for this trip — cached coordinates are managed in the cache manager
+    const clearBtn = tripInvLocations[id]
       ? `<button onclick="clearTripInvLocation('${id}')" title="Clear custom location" style="background:none;border:none;color:#e74c3c;cursor:pointer;padding:0 2px;font-size:11px;flex-shrink:0">✕</button>`
       : '';
 
@@ -2750,18 +2752,31 @@ function updateTripShare() {
   const saveBtn = document.getElementById('costSaveBtn');
   if (saveBtn) saveBtn.textContent = count > 1 && totalCost > 0 ? `Save & split to ${count} invoices` : 'Save';
 }
+// Resolve a stop's coordinates: an explicit map pin first, otherwise the
+// coordinates saved in the transport cache for that customer.
+function getStopLocation(invId) {
+  if (tripInvLocations[invId]) return tripInvLocations[invId];
+  const inv = state.invoices.find(i => i.id === invId);
+  if (!inv) return null;
+  const e = getTransportCache()[(inv.customer || '').toLowerCase().trim()];
+  if (e && typeof e.lat === 'number' && typeof e.lng === 'number') {
+    return { lat: e.lat, lng: e.lng, label: e.city || inv.customer, km: e.km || 0, fromCache: true };
+  }
+  return null;
+}
+
 async function calculateRouteDistance() {
   if (tripRouteIds.length < 2) { alert('Select at least one other invoice for the trip.'); return; }
   const hint = document.getElementById('tripRouteHint');
 
-  // If ALL stops have map pins → use real OSRM multi-stop routing (no API key needed)
-  const allHaveLoc = tripRouteIds.every(id => tripInvLocations[id]);
-  if (allHaveLoc) {
+  // If every stop has coordinates (pin or cache) → real OSRM multi-stop routing, no API key needed
+  const locs = tripRouteIds.map(id => getStopLocation(id));
+  if (locs.every(Boolean)) {
     hint.textContent = 'Calculating road route…';
     try {
       const waypoints = [
         `${IPOH_OFFICE.lng},${IPOH_OFFICE.lat}`,
-        ...tripRouteIds.map(id => `${tripInvLocations[id].lng},${tripInvLocations[id].lat}`),
+        ...locs.map(l => `${l.lng},${l.lat}`),
         `${IPOH_OFFICE.lng},${IPOH_OFFICE.lat}`
       ].join(';');
       const resp = await fetch(`https://router.project-osrm.org/route/v1/driving/${waypoints}?overview=false`);
@@ -2770,7 +2785,7 @@ async function calculateRouteDistance() {
         const km = Math.round(data.routes[0].distance / 1000);
         const mins = Math.round(data.routes[0].duration / 60);
         document.getElementById('fTripTotalKm').value = km;
-        _lastTripLegs = { stopIds: [...tripRouteIds], stopLocations: tripRouteIds.map(id => tripInvLocations[id]) };
+        _lastTripLegs = { stopIds: [...tripRouteIds], stopLocations: locs };
         hint.innerHTML = `📍 Real road route: ${km} km · ~${mins} min &nbsp;<button onclick="showTripRouteOnMap()" style="background:#1a3a6a;border:none;border-radius:4px;color:#4fc3f7;padding:3px 10px;font-size:11px;cursor:pointer">🗺 View Route</button>`;
         updateTripShare();
         return;
@@ -2781,18 +2796,13 @@ async function calculateRouteDistance() {
   }
 
   // Fallback: AI estimate using city names
-  const cache2 = getTransportCache();
-  const missingLoc = tripRouteIds.filter(id => {
-    if (tripInvLocations[id]) return false;
+  const missingLoc = tripRouteIds.filter(id => !getStopLocation(id));
+  const missingNames = missingLoc.map(id => {
     const inv = state.invoices.find(i => i.id === id);
-    return !inv || !cache2[(inv.customer||'').toLowerCase().trim()]?.km;
+    return inv ? (inv.customer || inv.invoiceNo) : id;
   });
   if (missingLoc.length) {
-    const names = missingLoc.map(id => {
-      const inv = state.invoices.find(i => i.id === id);
-      return inv ? (inv.customer || inv.invoiceNo) : id;
-    });
-    hint.innerHTML = `⚠ ${missingLoc.length} stop(s) have no location: <strong>${names.join(', ')}</strong>. Click 📍 next to each above to set, then recalculate. Using AI estimate for now…`;
+    hint.innerHTML = `⚠ ${missingLoc.length} stop(s) have no map location: <strong>${missingNames.join(', ')}</strong>. Click 📍 next to each to set it — that gives an exact road route and is remembered for next time. Trying AI estimate meanwhile…`;
   }
   const key = getClaudeKey();
   if (!key) {
@@ -2829,10 +2839,9 @@ async function calculateRouteDistance() {
         hint.innerHTML += '<br>AI could not calculate total km. Please enter manually.';
     }
   } catch(e) {
-    const noLocNames = tripRouteIds
-      .filter(id => !tripInvLocations[id])
-      .map(id => { const inv = state.invoices.find(i => i.id === id); return inv ? (inv.customer || inv.invoiceNo) : id; });
-    hint.innerHTML = `⚠ AI failed. ${noLocNames.length ? `Set map pin (📍) for: <strong>${noLocNames.join(', ')}</strong>` : 'Enter total km manually.'} `;
+    hint.innerHTML = missingNames.length
+      ? `⚠ AI estimate failed. Set a map pin (📍) for: <strong>${missingNames.join(', ')}</strong> — then Calculate Route works offline with no AI.`
+      : '⚠ AI estimate failed. Enter total km manually.';
   }
 }
 
@@ -2876,6 +2885,9 @@ function syncSettingToFirebase(key, value) {
 
 const TRANSPORT_CACHE_KEY = 'iht_transport_cache';
 let currentCostCustomer = '';
+// Coordinates of the location found/picked for the current customer, so they
+// can be cached alongside the km and reused for multi-stop route calculation.
+let currentTransportCoords = null;
 function getTransportCache() {
   try { return JSON.parse(localStorage.getItem(TRANSPORT_CACHE_KEY) || '{}'); } catch(e) { return {}; }
 }
@@ -2885,7 +2897,10 @@ function saveTransportCache(cache) {
 }
 
 // ---- Cache Manager ----
+// Coordinates picked via 📍 Map for the pending "Add New Entry" row
+let cacheNewCoords = null;
 function openCacheManager() {
+  cacheNewCoords = null;
   renderCacheManagerList();
   populateCacheCustomerList();
   document.getElementById('cacheManagerBg').classList.add('open');
@@ -2915,8 +2930,10 @@ function addNewCacheEntry() {
   const cache = getTransportCache();
   const key = customer.toLowerCase().trim();
   if (cache[key] && !confirm(`"${customer}" is already cached at ${cache[key].km} km.\nReplace it with ${km} km?`)) return;
-  cache[key] = { km, rate: getTransportRate(), city: city || customer, cachedAt: Date.now() };
+  cache[key] = { km, rate: getTransportRate(), city: city || customer, cachedAt: Date.now(),
+                 ...(cacheNewCoords || {}) };
   saveTransportCache(cache);
+  cacheNewCoords = null;
   document.getElementById('cacheNewCustomer').value = '';
   document.getElementById('cacheNewCity').value = '';
   document.getElementById('cacheNewKm').value = '';
@@ -2946,6 +2963,9 @@ function renderCacheManagerList() {
           <div id="${eid}-view" style="margin-top:5px;display:flex;gap:12px;flex-wrap:wrap">
             <span style="font-size:12px;color:#e0e0e0">📍 ${e.city||'—'}</span>
             <span style="font-size:12px;color:#5dfc8d">${e.km||'—'} km one-way</span>
+            ${typeof e.lat === 'number'
+              ? '<span style="font-size:11px;color:#5dfc8d" title="Coordinates saved — usable for trip route calculation">🗺 pinned</span>'
+              : '<span style="font-size:11px;color:#f39c12" title="No coordinates — trip route calculation can\'t use this entry">⚠ no pin</span>'}
             <span style="font-size:11px;color:#555">${dateStr}</span>
           </div>
           <div id="${eid}-edit" style="display:none;margin-top:8px">
@@ -3010,9 +3030,12 @@ function initTransportCalc(customerName) {
   const hintEl = document.getElementById('transportCityHint');
   const cacheEl = document.getElementById('transportCacheInfo');
   populateVehicleDropdowns();
+  currentTransportCoords = (cached && typeof cached.lat === 'number')
+    ? { lat: cached.lat, lng: cached.lng } : null;
   if (cached) {
     kmEl.value = cached.km;
-    cacheEl.textContent = `✓ Cached: ${cached.city}, ${cached.km} km`;
+    cacheEl.textContent = `✓ Cached: ${cached.city}, ${cached.km} km` +
+      (currentTransportCoords ? ' · 📍 pinned' : ' · no map pin yet');
     cacheEl.style.display = 'block';
     hintEl.textContent = '';
   } else {
@@ -3044,11 +3067,16 @@ async function lookupDistance() {
   btn.textContent = '⏳'; btn.disabled = true;
   const office = getOffice();
 
+  // Every lookup path funnels through here, so this is where the resolved
+  // coordinates get remembered for caching / route calculation.
   async function routeToPoint(lat, lon) {
     try {
       const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${office.lng},${office.lat};${lon},${lat}?overview=false`);
       const d = await r.json();
-      if (d.code === 'Ok' && d.routes?.[0]) return Math.round(d.routes[0].distance / 100) / 10;
+      if (d.code === 'Ok' && d.routes?.[0]) {
+        currentTransportCoords = { lat: parseFloat(lat), lng: parseFloat(lon) };
+        return Math.round(d.routes[0].distance / 100) / 10;
+      }
     } catch(e) {}
     return null;
   }
@@ -3171,7 +3199,11 @@ function addTransportToCost() {
   const cityMatch = hint.match(/(?:Found|found city):\s*([^—\n]+?)(?:\s*—|\s*,\s*\d)/);
   const city = cityMatch ? cityMatch[1].trim() : currentCostCustomer;
   const cache = getTransportCache();
-  cache[currentCostCustomer.toLowerCase().trim()] = { km, rate, city, cachedAt: Date.now() };
+  const prev = cache[currentCostCustomer.toLowerCase().trim()] || {};
+  const coords = currentTransportCoords ||
+    (typeof prev.lat === 'number' ? { lat: prev.lat, lng: prev.lng } : null);
+  cache[currentCostCustomer.toLowerCase().trim()] =
+    { km, rate, city, cachedAt: Date.now(), ...(coords || {}) };
   saveTransportCache(cache);
   document.getElementById('transportCacheInfo').textContent = `✓ Cached: ${city}, ${km} km`;
   document.getElementById('transportCacheInfo').style.display = 'block';
@@ -3495,6 +3527,7 @@ function useMyLocation() {
 function confirmMapLocation() {
   if (mapPickerTarget === 'transport') {
     document.getElementById('fTransportKm').value = mapPickerKm;
+    currentTransportCoords = { lat: mapPickerLat, lng: mapPickerLng };
     document.getElementById('transportCityHint').textContent = `📍 Location set from map: ~${mapPickerKm} km (one-way road estimate)`;
     updateTransportCalc();
   } else if (mapPickerTarget === 'trip') {
@@ -3504,9 +3537,21 @@ function confirmMapLocation() {
   } else if (mapPickerTarget === 'tripInv' && mapPickerTripInvId) {
     const label = document.getElementById('mapPickerInfo').textContent;
     tripInvLocations[mapPickerTripInvId] = { lat: mapPickerLat, lng: mapPickerLng, label, km: mapPickerKm };
+    // Remember it against the customer so future trips route without re-pinning
+    const inv = state.invoices.find(i => i.id === mapPickerTripInvId);
+    if (inv && inv.customer) {
+      const cache = getTransportCache();
+      const key = inv.customer.toLowerCase().trim();
+      const prev = cache[key] || {};
+      cache[key] = { ...prev, km: mapPickerKm, lat: mapPickerLat, lng: mapPickerLng,
+                     rate: prev.rate || getTransportRate(),
+                     city: prev.city || inv.customer, cachedAt: Date.now() };
+      saveTransportCache(cache);
+    }
     renderTripRouteOrder();
   } else if (mapPickerTarget === 'cache') {
     document.getElementById('cacheNewKm').value = mapPickerKm;
+    cacheNewCoords = { lat: mapPickerLat, lng: mapPickerLng };
     // Fill City / Area from the picked place if the user left it blank
     const cityEl = document.getElementById('cacheNewCity');
     if (!cityEl.value.trim() && mapPickerPlaceLabel) {

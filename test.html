@@ -2782,7 +2782,7 @@ async function calculateRouteDistance() {
       if (!cust) { autoFailed.push(inv ? inv.invoiceNo : tripRouteIds[i]); continue; }
       hint.textContent = `Finding ${cust}…`;
       const r = await resolveCustomerLocation(cust, m => { hint.textContent = `${cust}: ${m}`; });
-      if (!r) { autoFailed.push(cust); continue; }
+      if (!r) { autoFailed.push(cust + (lastAiError ? ` — ${lastAiError}` : '')); continue; }
       const km = await officeRoadKm(r.lat, r.lng);
       const key = cust.toLowerCase().trim();
       const prev = cache[key] || {};
@@ -3116,10 +3116,14 @@ function cityFromCompanyName(name) {
   return MY_CITIES.find(c => up.includes(c.toUpperCase())) || null;
 }
 
+// Why the last AI lookup failed, so the UI can say more than "AI failed"
+let lastAiError = '';
+
 async function resolveCustomerLocation(name, onProgress) {
   const say = m => { if (onProgress) onProgress(m); };
   if (!name || !name.trim()) return null;
   const q = name.trim();
+  lastAiError = '';
 
   // 1. Google Places — most reliable for Malaysian businesses
   if (getGoogleKey()) {
@@ -3153,27 +3157,36 @@ async function resolveCustomerLocation(name, onProgress) {
 
   // 4. Ask Claude which city the company is in — city centre only
   const key = getClaudeKey();
-  if (key) {
-    say('asking AI for the city…');
-    try {
-      const resp = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-allow-browser': 'true' },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 20,
-          messages: [{ role: 'user', content: `Malaysian company: "${q}". What city/town in Malaysia? Reply ONLY city and state e.g. "Ipoh, Perak". If unknown: UNKNOWN` }]
-        })
-      });
-      const data = await resp.json();
-      const city = (data.content?.[0]?.text || '').trim().replace(/^["']|["']$/g, '');
-      if (city && !/unknown/i.test(city)) {
-        hits = await nominatimLookup(city + ', Malaysia');
-        if (hits.length) {
-          return { lat: +hits[0].lat, lng: +hits[0].lon, label: city, source: '🤖 AI', approx: true };
-        }
-      }
-    } catch(e) {}
+  if (!key) {
+    lastAiError = 'no Claude API key set (👥 Users → Claude API Key)';
+    return null;
+  }
+  say('asking AI for the city…');
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-allow-browser': 'true' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 20,
+        messages: [{ role: 'user', content: `Malaysian company: "${q}". What city/town in Malaysia? Reply ONLY city and state e.g. "Ipoh, Perak". If unknown: UNKNOWN` }]
+      })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      lastAiError = (data.error && data.error.message) || `HTTP ${resp.status}`;
+      return null;
+    }
+    const city = (data.content?.[0]?.text || '').trim().replace(/^["']|["']$/g, '');
+    if (!city || /unknown/i.test(city)) { lastAiError = 'AI did not recognise this company'; return null; }
+    hits = await nominatimLookup(city + ', Malaysia');
+    if (hits.length) {
+      return { lat: +hits[0].lat, lng: +hits[0].lon, label: city, source: '🤖 AI', approx: true };
+    }
+    lastAiError = `could not map "${city}" to coordinates`;
+  } catch(e) {
+    // A thrown fetch means the request never completed — network or CORS
+    lastAiError = `request blocked (${e.message}) — the browser could not reach api.anthropic.com`;
   }
   return null;
 }
@@ -3198,7 +3211,8 @@ async function lookupDistance() {
     }
   }
 
-  hintEl.innerHTML = 'Could not determine location. Click 📍 and paste the Google Maps coordinates ' +
+  hintEl.innerHTML = (lastAiError ? `Lookup failed — ${lastAiError}.<br>` : 'Could not determine location. ') +
+    'Click 📍 and paste the Google Maps coordinates ' +
     '(right-click the pin in Google Maps → click the coordinates to copy), or enter km manually.';
   btn.textContent = '🔍 Find'; btn.disabled = false;
 }

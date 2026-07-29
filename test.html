@@ -2637,11 +2637,15 @@ function renderTripRouteOrder() {
     const loc = tripInvLocations[id];
     const share = tripInvShares[id];
 
-    const locBtnStyle = `background:none;border:1px solid ${loc?'#5dfc8d':'#1a3a6a'};border-radius:3px;color:${loc?'#5dfc8d':'#888'};cursor:pointer;padding:1px 5px;font-size:11px;flex-shrink:0`;
-
-    // Distance + share badge
     const distKm = loc ? loc.km : (cache[(cust).toLowerCase().trim()]?.km || 0);
-    const kmBadge = distKm > 0 ? `<span style="color:#aaa;font-size:10px;flex-shrink:0">${distKm}km</span>` : '';
+    const hasAnyLocation = loc || distKm > 0;
+    // Pin button: green=pin set, yellow=cache only, orange=nothing
+    const pinColor = loc ? '#5dfc8d' : (distKm > 0 ? '#f39c12' : '#e74c3c');
+    const pinBorder = loc ? '#5dfc8d' : (distKm > 0 ? '#f39c12' : '#e74c3c');
+    const locBtnStyle = `background:${hasAnyLocation?'none':'rgba(231,76,60,0.1)'};border:1px solid ${pinBorder};border-radius:3px;color:${pinColor};cursor:pointer;padding:1px 5px;font-size:11px;flex-shrink:0${!hasAnyLocation?';font-weight:700':''}`;
+
+    const kmBadge = distKm > 0 ? `<span style="color:${loc?'#aaa':'#f39c12'};font-size:10px;flex-shrink:0">${distKm}km${loc?'':' ⚡'}</span>` : '';
+    const missingBadge = !hasAnyLocation ? `<span style="color:#e74c3c;font-size:10px;flex-shrink:0">⚠ no loc</span>` : '';
     const shareBadge = share && share.amount > 0
       ? `<span style="color:#5dfc8d;font-size:11px;font-weight:600;flex-shrink:0">${fmtRM(share.amount)}</span><span style="color:#555;font-size:10px;flex-shrink:0">(${Math.round(share.ratio*100)}%)</span>`
       : '';
@@ -2649,11 +2653,11 @@ function renderTripRouteOrder() {
       ? `<button onclick="clearTripInvLocation('${id}')" title="Clear custom location" style="background:none;border:none;color:#e74c3c;cursor:pointer;padding:0 2px;font-size:11px;flex-shrink:0">✕</button>`
       : '';
 
-    return `<div style="display:flex;align-items:center;gap:5px;padding:5px 2px;font-size:12px;border-bottom:1px solid #0f1e35">
+    return `<div style="display:flex;align-items:center;gap:5px;padding:5px 2px;font-size:12px;border-bottom:1px solid ${!hasAnyLocation?'#3d1010':'#0f1e35'}">
       <span style="color:#555;min-width:16px;text-align:right;flex-shrink:0">${idx+1}.</span>
-      <span style="color:#e0e0e0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cust}${city&&!loc?` <span style="color:#5dfc8d;font-size:10px">(${city})</span>`:''}</span>
-      ${kmBadge}${shareBadge}${clearBtn}
-      <button onclick="openMapPickerForTripInv('${id}')" title="Set delivery location on map" style="${locBtnStyle}">📍</button>
+      <span style="color:#e0e0e0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cust}${city&&!loc?` <span style="color:#f39c12;font-size:10px">(${city})</span>`:''}</span>
+      ${kmBadge}${missingBadge}${shareBadge}${clearBtn}
+      <button onclick="openMapPickerForTripInv('${id}')" title="${hasAnyLocation?'Update location':'⚠ Set location — needed for distance split'}" style="${locBtnStyle}">📍</button>
       ${isCurrent ? '<span style="color:#555;font-size:10px;flex-shrink:0">this</span>' : `<button onclick="moveTripStop('${id}',-1)" style="background:none;border:none;color:#aaa;cursor:pointer;padding:0 3px;font-size:13px;flex-shrink:0">↑</button><button onclick="moveTripStop('${id}',1)" style="background:none;border:none;color:#aaa;cursor:pointer;padding:0 3px;font-size:13px;flex-shrink:0">↓</button>`}
     </div>`;
   });
@@ -2751,14 +2755,23 @@ async function calculateRouteDistance() {
         return;
       }
     } catch(e) {}
-    hint.textContent = 'OSRM routing failed. Try AI estimate instead.';
+    hint.innerHTML = '⚠ Road routing failed. Check connection or try AI estimate.';
     return;
   }
 
   // Fallback: AI estimate using city names
-  const missingLoc = tripRouteIds.filter(id => !tripInvLocations[id]);
-  if (missingLoc.length && missingLoc.length < tripRouteIds.length) {
-    hint.textContent = `${missingLoc.length} stop(s) missing map pin — using AI estimate for those.`;
+  const cache2 = getTransportCache();
+  const missingLoc = tripRouteIds.filter(id => {
+    if (tripInvLocations[id]) return false;
+    const inv = state.invoices.find(i => i.id === id);
+    return !inv || !cache2[(inv.customer||'').toLowerCase().trim()]?.km;
+  });
+  if (missingLoc.length) {
+    const names = missingLoc.map(id => {
+      const inv = state.invoices.find(i => i.id === id);
+      return inv ? (inv.customer || inv.invoiceNo) : id;
+    });
+    hint.innerHTML = `⚠ ${missingLoc.length} stop(s) have no location: <strong>${names.join(', ')}</strong>. Click 📍 next to each above to set, then recalculate. Using AI estimate for now…`;
   }
   const key = getClaudeKey();
   if (!key) {
@@ -2792,10 +2805,13 @@ async function calculateRouteDistance() {
       hint.textContent = `🤖 AI estimate: ${route} ≈ ${km} km. Edit if needed.`;
       updateTripShare();
     } else {
-      hint.textContent = 'Could not calculate. Enter total km manually.';
+        hint.innerHTML += '<br>AI could not calculate total km. Please enter manually.';
     }
   } catch(e) {
-    hint.textContent = 'AI failed. Enter total km manually.';
+    const noLocNames = tripRouteIds
+      .filter(id => !tripInvLocations[id])
+      .map(id => { const inv = state.invoices.find(i => i.id === id); return inv ? (inv.customer || inv.invoiceNo) : id; });
+    hint.innerHTML = `⚠ AI failed. ${noLocNames.length ? `Set map pin (📍) for: <strong>${noLocNames.join(', ')}</strong>` : 'Enter total km manually.'} `;
   }
 }
 

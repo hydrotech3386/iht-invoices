@@ -213,7 +213,6 @@
   body:not([data-role="account"]) #scanInvoiceBtn { display:none !important }
   body:not([data-role="management"]) .btn-backup,
   body:not([data-role="management"]) .btn-usermgmt { display:none }
-  body:not([data-role="management"]) .btn-export-test { display:none !important }
   body:not([data-role="management"]) .btn-commission { display:none }
   body[data-role="salesman"] #salesmanFilter { display:none }
   body:not([data-role="salesman"]) .btn-my-adj-req { display:none }
@@ -472,8 +471,18 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
+
+<div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#c0392b;color:#fff;text-align:center;font-weight:700;font-size:13px;padding:5px;display:flex;align-items:center;justify-content:center;gap:14px">
+  <span>⚠ TEST MODE — Loaded from live app cache. All saves blocked.</span>
+  <button onclick="refreshTestData()" style="background:#fff;color:#c0392b;border:none;border-radius:4px;padding:3px 10px;font-size:12px;font-weight:700;cursor:pointer">🔄 Refresh Cache</button>
+  <button onclick="document.getElementById('testImportFile').click()" style="background:#fff;color:#c0392b;border:none;border-radius:4px;padding:3px 10px;font-size:12px;font-weight:700;cursor:pointer">📁 Import Data</button>
+  <input type="file" id="testImportFile" accept=".json" style="display:none" onchange="importTestData(this)">
+</div>
+<div style="height:29px"></div>
 
 <div class="auth-overlay" id="authOverlay">
   <div class="auth-card">
@@ -531,7 +540,6 @@
   <div class="user-info" id="userInfo" style="display:none">
     <span class="role-badge" id="roleBadge"></span>
     <span class="user-name" id="userLabel"></span>
-    <button class="btn-logout btn-export-test" onclick="exportForTesting()" title="Export data for test.html">⬇ Test Export</button>
     <button class="btn-logout" onclick="openProfileModal()" title="My Profile">⚙</button>
     <button class="btn-logout" onclick="logout()">Logout</button>
   </div>
@@ -693,6 +701,68 @@
   </div>
 </div>
 
+<!-- Map Picker Modal -->
+<!-- Vehicle Rates Modal -->
+<div class="modal-bg" id="vehicleRatesBg" style="z-index:9600">
+  <div class="modal" style="max-width:320px">
+    <h2>🚗 Vehicle Rates</h2>
+    <div style="font-size:12px;color:#888;margin-bottom:14px">Cost per kilometre for each vehicle. Changes apply immediately.</div>
+    <div id="vehicleRatesList"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeVehicleRatesModal()">Cancel</button>
+      <button class="btn-confirm" onclick="saveVehicleRatesModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Transport Cache Manager Modal -->
+<div class="modal-bg" id="cacheManagerBg" style="z-index:9500">
+  <div class="modal" style="max-width:560px;padding:0;overflow:hidden">
+    <div style="padding:12px 16px;border-bottom:1px solid #1a3a6a;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-weight:700;font-size:15px;color:#fff">🗂 Transport Distance Cache</div>
+      <button onclick="closeCacheManager()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:20px;line-height:1">✕</button>
+    </div>
+    <div style="padding:8px 14px 4px;font-size:11px;color:#888">Distances auto-saved when you use Transport Cost. Edit or delete any entry.</div>
+    <div id="cacheManagerList" style="max-height:380px;overflow-y:auto;padding:6px 14px 14px"></div>
+    <div style="padding:10px 16px;border-top:1px solid #1a3a6a;display:flex;justify-content:space-between;align-items:center">
+      <button onclick="clearAllCache()" style="background:none;border:1px solid #e74c3c;color:#e74c3c;border-radius:5px;padding:6px 14px;font-size:12px;cursor:pointer">Clear All</button>
+      <button class="btn-cancel" onclick="closeCacheManager()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="mapPickerBg" style="z-index:10000">
+  <div class="modal" style="max-width:620px;padding:0;overflow:hidden">
+    <div style="padding:12px 16px;border-bottom:1px solid #1a3a6a;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div id="mapPickerTitle" style="font-weight:700;font-size:15px;color:#fff">📍 Set Delivery Location</div>
+        <div id="mapPickerSubtitle" style="font-size:11px;color:#aaa;margin-top:2px">Click anywhere on the map to drop a pin</div>
+      </div>
+      <button onclick="closeMapPicker()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:20px;line-height:1">✕</button>
+    </div>
+    <div id="mapSearchBar" style="padding:8px 12px;border-bottom:1px solid #1a3a6a;position:relative">
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="text" id="mapSearchInput" placeholder="Search location (e.g. Sunway City Ipoh, George Town)…"
+          style="flex:1;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:12px;outline:none"
+          oninput="onMapSearchInput()" onkeydown="if(event.key==='Enter')doMapSearch()">
+        <button onclick="doMapSearch()" style="background:#1a3a6a;border:none;border-radius:5px;color:#fff;padding:7px 12px;font-size:12px;cursor:pointer;white-space:nowrap">🔍 Search</button>
+      </div>
+      <div id="mapSearchResults" style="position:absolute;left:12px;right:12px;background:#0d2044;border:1px solid #1a3a6a;border-radius:0 0 6px 6px;z-index:99999;max-height:200px;overflow-y:auto;display:none"></div>
+    </div>
+    <div id="mapPickerEl" style="height:340px;width:100%"></div>
+    <div style="padding:10px 16px;border-top:1px solid #1a3a6a;display:flex;justify-content:space-between;align-items:center;gap:12px">
+      <div style="flex:1;min-width:0">
+        <div id="mapPickerInfo" style="font-size:12px;color:#aaa">No location selected</div>
+        <div id="mapPickerDist" style="font-size:13px;color:#5dfc8d;font-weight:600;margin-top:2px"></div>
+      </div>
+      <div id="mapPickerActions" style="display:flex;gap:8px;flex-shrink:0">
+        <button id="mapPickerMyLocBtn" class="btn-re" style="padding:7px 12px;font-size:12px" onclick="useMyLocation()">🎯 My Location</button>
+        <button class="btn-confirm" style="padding:7px 14px;font-size:12px" id="mapPickerConfirmBtn" disabled onclick="confirmMapLocation()">Use This Location</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Payment Modal -->
 <div class="modal-bg" id="paymentModalBg">
   <div class="modal" style="max-width:480px">
@@ -734,9 +804,68 @@
       <span>Total Cost</span>
       <strong id="costModalTotal">RM 0.00</strong>
     </div>
+    <div class="section-divider" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
+      <span>Transport Cost</span>
+      <button onclick="openCacheManager()" style="background:none;border:none;color:#4fc3f7;font-size:11px;cursor:pointer;padding:0;text-decoration:underline">Manage Cache</button>
+    </div>
+    <div id="transportCacheInfo" style="font-size:11px;color:#5dfc8d;margin-bottom:8px;display:none"></div>
+    <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:8px">
+      <div style="flex:1">
+        <label style="font-size:11px;color:#aaa;display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+          <span>Vehicle</span>
+          <button onclick="openVehicleRatesModal()" style="background:none;border:none;color:#4fc3f7;font-size:11px;cursor:pointer;padding:0;text-decoration:underline">Edit Rates</button>
+        </label>
+        <select id="fTransportVehicle" onchange="onVehicleChange('transport')" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px"></select>
+      </div>
+      <div style="flex:1">
+        <label style="font-size:11px;color:#aaa;display:block;margin-bottom:3px">Distance (km, one-way)</label>
+        <input type="number" id="fTransportKm" placeholder="0" min="0" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px" oninput="updateTransportCalc()">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <button id="aiEstimateBtn" class="btn-re" style="padding:7px 10px;font-size:12px;white-space:nowrap" onclick="aiEstimateDistance()">🤖 AI</button>
+        <button class="btn-re" style="padding:7px 10px;font-size:12px;white-space:nowrap" onclick="openMapPicker()">📍 Map</button>
+      </div>
+    </div>
+    <div id="transportCityHint" style="font-size:11px;color:#aaa;margin-bottom:8px;min-height:15px"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <span style="font-size:12px;color:#aaa">Round trip cost: <strong id="transportCalcAmt" style="color:#f39c12">RM 0.00</strong></span>
+      <button class="btn-confirm" style="padding:5px 12px;font-size:12px" onclick="addTransportToCost()">+ Add to Items</button>
+    </div>
+    <div class="section-divider" style="margin-top:14px">Delivery Trip</div>
+    <div style="margin-bottom:10px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#ccc">
+        <input type="checkbox" id="tripEnabled" onchange="toggleTripSection()" style="width:15px;height:15px;cursor:pointer">
+        Split transport cost across multiple invoices
+      </label>
+    </div>
+    <div id="tripSection" style="display:none">
+      <div style="margin-bottom:8px">
+        <label style="font-size:11px;color:#aaa;display:block;margin-bottom:3px">Vehicle</label>
+        <select id="fTripVehicle" onchange="onVehicleChange('trip')" style="width:200px;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px"></select>
+      </div>
+      <div style="font-size:12px;color:#aaa;margin-bottom:6px">Select invoices on this trip:</div>
+      <div id="tripInvoiceList" style="max-height:160px;overflow-y:auto;border:1px solid #1a3a6a;border-radius:6px;padding:4px;margin-bottom:10px"></div>
+      <div style="font-size:12px;color:#aaa;margin-bottom:6px">Delivery order (Ipoh → ... → Ipoh):</div>
+      <div id="tripRouteOrder" style="border:1px solid #1a3a6a;border-radius:6px;padding:6px;margin-bottom:10px;min-height:40px">
+        <div style="color:#555;font-size:12px;font-style:italic;padding:4px">Select invoices above to set route order.</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <button class="btn-re" style="padding:6px 12px;font-size:12px" onclick="calculateRouteDistance()">🤖 Calculate Route</button>
+        <div style="flex:1">
+          <input type="number" id="fTripTotalKm" placeholder="Total km" min="0" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:6px 10px;font-size:13px" oninput="updateTripShare()">
+        </div>
+        <span style="font-size:11px;color:#555;white-space:nowrap">km</span>
+        <button class="btn-re" style="padding:6px 8px;font-size:11px;white-space:nowrap" onclick="openMapPicker('trip')">📍</button>
+      </div>
+      <div id="tripRouteHint" style="font-size:11px;color:#aaa;margin-bottom:8px;min-height:14px"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid #1a3a6a">
+        <span style="font-size:12px;color:#aaa">Total cost: <strong id="tripTotalDisplay" style="color:#f39c12">RM 0.00</strong></span>
+        <span style="font-size:12px;color:#aaa">Allocation: <strong id="tripShareDisplay" style="color:#5dfc8d">—</strong></span>
+      </div>
+    </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeCostModal()">Cancel</button>
-      <button class="btn-confirm" onclick="saveCostModal()">Save</button>
+      <button class="btn-confirm" id="costSaveBtn" onclick="saveCostModal()">Save</button>
     </div>
   </div>
 </div>
@@ -965,7 +1094,52 @@
 </div>
 
 <script>
-const STORAGE_KEY = 'hydrotech_invoices_v1';
+const STORAGE_KEY = 'hydrotech_invoices_TEST';
+const LIVE_STORAGE_KEY = 'hydrotech_invoices_v1'; // live app's cache key
+
+function _loadLiveData() {
+  try {
+    const liveData = JSON.parse(localStorage.getItem(LIVE_STORAGE_KEY) || 'null');
+    if (liveData && Array.isArray(liveData.invoices) && liveData.invoices.length) {
+      state = liveData;
+      return liveData.invoices.length;
+    }
+  } catch(e) {}
+  return 0;
+}
+function refreshTestData() {
+  const count = _loadLiveData();
+  if (!count) {
+    alert('No data found.\n\nStep 1: Open index.html (live app) in this browser and log in.\nStep 2: Wait for it to sync (shows "Synced ✓").\nStep 3: Come back here and click Refresh Cache.\n\nOr use "📁 Import Data" with a file exported from the live app.');
+    return;
+  }
+  renderSalesmanFilter(); renderMonthFilter(); renderSummary(); renderList();
+  if (fbRef && fbRef.on) fbRef.on('value', snapshot => {});
+  setSyncStatus('synced');
+  alert(`✓ Refreshed — ${count} invoices loaded from live app cache.`);
+}
+function importTestData(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data || !Array.isArray(data.invoices) || !data.invoices.length) {
+        alert('Invalid export file — no invoices found.'); return;
+      }
+      state = data;
+      localStorage.setItem(LIVE_STORAGE_KEY, e.target.result);
+      renderSalesmanFilter(); renderMonthFilter(); renderSummary(); renderList();
+      setSyncStatus('synced');
+      alert(`✓ Imported ${data.invoices.length} invoices from file.\n\nData is now cached locally for future "Refresh Cache" too.`);
+    } catch(err) {
+      alert('Failed to parse file: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
 let session      = null;
 let sessionWatchInterval = null;
 let commentsId   = null;
@@ -1361,20 +1535,6 @@ async function registerAsync() {
   } catch(err) { errEl.textContent = 'Registration error: ' + err.message; console.error(err); }
 }
 
-function exportForTesting() {
-  const count = state.invoices ? state.invoices.length : 0;
-  if (!count) { alert('No invoice data loaded yet. Wait for sync to complete.'); return; }
-  const blob = new Blob([JSON.stringify(state)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `iht_test_data_${new Date().toISOString().slice(0,10)}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(a.href);
-  alert(`✓ Exported ${count} invoices.\n\nIn test.html, click "📁 Import Data" and select this file.`);
-}
-
 function logout(reason) {
   if (sessionWatchInterval) { clearInterval(sessionWatchInterval); sessionWatchInterval = null; }
   if (session && usersRef && fbReady) {
@@ -1435,7 +1595,18 @@ function onLoggedIn() {
   if (!fbReady) return;
   // Load Telegram settings and chat ID map
   firebase.database().ref('appSettings').once('value').then(snap => {
-    if (snap.val()) Object.assign(appSettings, snap.val());
+    if (snap.val()) {
+      Object.assign(appSettings, snap.val());
+      // Sync vehicle rates from Firebase → localStorage → dropdowns
+      if (appSettings.vehicleRates) {
+        localStorage.setItem(VEHICLE_RATES_KEY, JSON.stringify(appSettings.vehicleRates));
+        populateVehicleDropdowns();
+      }
+      // Sync transport cache from Firebase → localStorage
+      if (appSettings.transportCache) {
+        localStorage.setItem(TRANSPORT_CACHE_KEY, JSON.stringify(appSettings.transportCache));
+      }
+    }
   });
   // Load lastNotifRead then subscribe badge
   usersRef.child(session.uid).child('lastNotifRead').once('value').then(snap => {
@@ -1489,12 +1660,21 @@ const FB_CONFIG = {
   messagingSenderId: "1071483045703",
   appId: "1:1071483045703:web:e80104a6ca2efe340aae62"
 };
+const TEST_MODE = true;
 let fbReady = false, fbRef = null, usersRef = null;
 function initFirebase() {
   try {
     firebase.initializeApp(FB_CONFIG);
-    fbRef = firebase.database().ref('invoices');
     usersRef = firebase.database().ref('invoiceUsers');
+    // fbRef: self-fires once with current state so onLoggedIn's offline-timeout is cleared,
+    // then behaves as connected. Writes are always no-ops to protect live data.
+    fbRef = {
+      on(ev, cb) {
+        if (ev === 'value') setTimeout(() => cb({ val(){ return state; }, exists(){ return true; } }), 300);
+      },
+      off() {},
+      set() { return Promise.resolve(); }
+    };
     fbReady = true;
   } catch(e) { console.warn('Firebase init failed', e); }
 }
@@ -2319,22 +2499,50 @@ function openCostModal(id) {
   let items = inv.costItems && inv.costItems.length > 0
     ? inv.costItems
     : (inv.cost > 0 ? [{desc: '', amount: inv.cost}] : []);
-  items.forEach(item => _addCostItemRow(item.desc || '', item.amount || 0));
-  if (!items.length) _addCostItemRow('', 0);
+  items.forEach(item => _addCostItemRow(item.desc || '', item.amount || 0, item.tripId || ''));
+  if (!items.length) _addCostItemRow('', 0, '');
   _updateCostTotal();
+  populateVehicleDropdowns();
+  initTransportCalc(inv.customer);
   document.getElementById('costModalBg').classList.add('open');
   setTimeout(() => { const f = list.querySelector('.cost-item-desc'); if (f) f.focus(); }, 100);
 }
-function _addCostItemRow(desc, amount) {
+function _addCostItemRow(desc, amount, tripId) {
   const list = document.getElementById('costItemsList');
   const row = document.createElement('div');
   row.className = 'cost-item-row';
+  if (tripId) row.dataset.tripId = tripId;
   const safeDesc = String(desc).replace(/"/g, '&quot;');
+  const isShared = tripId ? true : false;
   row.innerHTML = `<input type="text" class="cost-item-desc" placeholder="Description" value="${safeDesc}">` +
     `<input type="text" inputmode="decimal" class="cost-item-amt" placeholder="0.00" value="${amount > 0 ? Number(amount).toFixed(2) : ''}">` +
-    `<button class="btn-rm-cost-item" onclick="this.closest('.cost-item-row').remove();_updateCostTotal()" title="Remove">✕</button>`;
+    `<button class="btn-rm-cost-item" onclick="removeCostItemRow(this)" title="${isShared ? 'Remove shared trip cost' : 'Remove'}" style="${isShared ? 'color:#e94560' : ''}">✕</button>`;
   row.querySelectorAll('input').forEach(inp => inp.addEventListener('input', _updateCostTotal));
   list.appendChild(row);
+}
+function removeCostItemRow(btn) {
+  const row = btn.closest('.cost-item-row');
+  const tripId = row.dataset.tripId;
+  if (tripId) {
+    const others = state.invoices.filter(inv =>
+      inv.id !== costModalId &&
+      (inv.costItems || []).some(item => item.tripId === tripId)
+    );
+    if (others.length) {
+      const names = others.map(inv => inv.invoiceNo || inv.id).join(', ');
+      if (confirm(`This is a shared trip cost.\n\nRemove from other invoices too?\n• ${names}`)) {
+        others.forEach(inv => {
+          inv.costItems = (inv.costItems || []).filter(item => item.tripId !== tripId);
+          inv.cost = inv.costItems.reduce((s, i) => s + i.amount, 0);
+          inv.updatedAt = Date.now();
+        });
+        persistState();
+        renderList();
+      }
+    }
+  }
+  row.remove();
+  _updateCostTotal();
 }
 function addCostItem() {
   _addCostItemRow('', 0);
@@ -2352,8 +2560,759 @@ function _updateCostTotal() {
 }
 function closeCostModal() {
   document.getElementById('costModalBg').classList.remove('open');
+  document.getElementById('tripEnabled').checked = false;
+  document.getElementById('tripSection').style.display = 'none';
+  document.getElementById('fTripTotalKm').value = '';
+  document.getElementById('fTripRate').value = '';
+  document.getElementById('tripRouteHint').textContent = '';
+  tripRouteIds = [];
+  document.getElementById('fTransportKm').value = '';
+  document.getElementById('transportCityHint').textContent = '';
+  document.getElementById('transportCacheInfo').style.display = 'none';
+  document.getElementById('transportCalcAmt').textContent = 'RM 0.00';
   costModalId = null;
 }
+let tripRouteIds = []; // ordered list of invoice IDs in route
+let tripInvLocations = {}; // invId → { lat, lng, label, km } for custom delivery spots
+let tripInvShares = {}; // invId → { km, ratio, amount } — distance-weighted cost share
+function toggleTripSection() {
+  const enabled = document.getElementById('tripEnabled').checked;
+  document.getElementById('tripSection').style.display = enabled ? 'block' : 'none';
+  if (enabled) {
+    // Sync vehicle selection from transport section to trip section
+    const transportVehicle = document.getElementById('fTransportVehicle').value;
+    if (transportVehicle) document.getElementById('fTripVehicle').value = transportVehicle;
+    tripRouteIds = [];
+    tripInvLocations = {};
+    tripInvShares = {};
+    populateTripInvoiceList();
+    renderTripRouteOrder();
+    updateTripShare();
+  }
+}
+function populateTripInvoiceList() {
+  const list = document.getElementById('tripInvoiceList');
+  // Include current invoice + all others
+  const all = [...state.invoices].sort((a,b) => (b.invoiceDate||'') > (a.invoiceDate||'') ? 1 : -1);
+  if (!all.length) { list.innerHTML = '<div style="color:#555;font-size:12px;padding:6px">No invoices.</div>'; return; }
+  list.innerHTML = all.map(inv => {
+    const isCurrent = inv.id === costModalId;
+    const cache = getTransportCache()[(inv.customer||'').toLowerCase().trim()];
+    const cityHint = cache ? `<span style="color:#5dfc8d;font-size:10px">${cache.city}</span>` : `<span style="color:#555;font-size:10px">no cache</span>`;
+    return `<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-bottom:1px solid #0f1e35;font-size:12px">
+      <input type="checkbox" class="trip-inv-cb" data-id="${inv.id}" ${isCurrent?'checked disabled':''} onchange="onTripInvToggle(this)" style="flex-shrink:0;cursor:pointer">
+      <span style="color:#4fc3f7;min-width:70px;flex-shrink:0">${inv.invoiceNo||'—'}${isCurrent?' <span style="color:#555;font-size:10px">(this)</span>':''}</span>
+      <span style="color:#e0e0e0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${inv.customer||'—'}</span>
+      ${cityHint}
+    </label>`;
+  }).join('');
+  // Current invoice is always in route at position 0
+  tripRouteIds = [costModalId];
+}
+function onTripInvToggle(cb) {
+  const id = cb.dataset.id;
+  if (cb.checked) { if (!tripRouteIds.includes(id)) tripRouteIds.push(id); }
+  else { tripRouteIds = tripRouteIds.filter(x => x !== id); }
+  renderTripRouteOrder();
+  updateTripShare();
+}
+function renderTripRouteOrder() {
+  const el = document.getElementById('tripRouteOrder');
+  if (tripRouteIds.length <= 1) {
+    el.innerHTML = '<div style="color:#555;font-size:12px;font-style:italic;padding:4px">Select other invoices above.</div>';
+    return;
+  }
+  const cache = getTransportCache();
+  const rows = tripRouteIds.map((id, idx) => {
+    const inv = state.invoices.find(i => i.id === id);
+    const cust = inv ? (inv.customer||'—') : '—';
+    const city = cache[(cust).toLowerCase().trim()]?.city || '';
+    const isCurrent = id === costModalId;
+    const loc = tripInvLocations[id];
+    const share = tripInvShares[id];
+
+    const locBtnStyle = `background:none;border:1px solid ${loc?'#5dfc8d':'#1a3a6a'};border-radius:3px;color:${loc?'#5dfc8d':'#888'};cursor:pointer;padding:1px 5px;font-size:11px;flex-shrink:0`;
+
+    // Distance + share badge
+    const distKm = loc ? loc.km : (cache[(cust).toLowerCase().trim()]?.km || 0);
+    const kmBadge = distKm > 0 ? `<span style="color:#aaa;font-size:10px;flex-shrink:0">${distKm}km</span>` : '';
+    const shareBadge = share && share.amount > 0
+      ? `<span style="color:#5dfc8d;font-size:11px;font-weight:600;flex-shrink:0">${fmtRM(share.amount)}</span><span style="color:#555;font-size:10px;flex-shrink:0">(${Math.round(share.ratio*100)}%)</span>`
+      : '';
+    const clearBtn = loc
+      ? `<button onclick="clearTripInvLocation('${id}')" title="Clear custom location" style="background:none;border:none;color:#e74c3c;cursor:pointer;padding:0 2px;font-size:11px;flex-shrink:0">✕</button>`
+      : '';
+
+    return `<div style="display:flex;align-items:center;gap:5px;padding:5px 2px;font-size:12px;border-bottom:1px solid #0f1e35">
+      <span style="color:#555;min-width:16px;text-align:right;flex-shrink:0">${idx+1}.</span>
+      <span style="color:#e0e0e0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cust}${city&&!loc?` <span style="color:#5dfc8d;font-size:10px">(${city})</span>`:''}</span>
+      ${kmBadge}${shareBadge}${clearBtn}
+      <button onclick="openMapPickerForTripInv('${id}')" title="Set delivery location on map" style="${locBtnStyle}">📍</button>
+      ${isCurrent ? '<span style="color:#555;font-size:10px;flex-shrink:0">this</span>' : `<button onclick="moveTripStop('${id}',-1)" style="background:none;border:none;color:#aaa;cursor:pointer;padding:0 3px;font-size:13px;flex-shrink:0">↑</button><button onclick="moveTripStop('${id}',1)" style="background:none;border:none;color:#aaa;cursor:pointer;padding:0 3px;font-size:13px;flex-shrink:0">↓</button>`}
+    </div>`;
+  });
+  el.innerHTML =
+    `<div style="color:#555;font-size:11px;padding:2px 4px 4px">📍 Ipoh Hydrotech</div>` +
+    rows.join('') +
+    `<div style="color:#555;font-size:11px;padding:4px 4px 2px">📍 Ipoh Hydrotech (return)</div>`;
+}
+function clearTripInvLocation(id) {
+  delete tripInvLocations[id];
+  renderTripRouteOrder();
+}
+function moveTripStop(id, dir) {
+  const idx = tripRouteIds.indexOf(id);
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= tripRouteIds.length) return;
+  // Don't move past the current invoice (always stays in position but user can reorder others)
+  [tripRouteIds[idx], tripRouteIds[newIdx]] = [tripRouteIds[newIdx], tripRouteIds[idx]];
+  renderTripRouteOrder();
+}
+function updateTripShare() {
+  const km = parseFloat(document.getElementById('fTripTotalKm').value) || 0;
+  const { rate } = getVehicleInfo('fTripVehicle');
+  const totalCost = Math.round(km * rate * 100) / 100;
+
+  const checkedIds = Array.from(document.querySelectorAll('.trip-inv-cb:checked')).map(cb => cb.dataset.id);
+  const count = checkedIds.length;
+  tripInvShares = {};
+
+  if (totalCost > 0 && count > 0) {
+    const cache = getTransportCache();
+    const stopKms = checkedIds.map(id => {
+      const loc = tripInvLocations[id];
+      if (loc && loc.km > 0) return { id, km: loc.km };
+      // Fallback: use cached km from transport cache
+      const inv = state.invoices.find(i => i.id === id);
+      const cachedKm = inv ? (cache[(inv.customer||'').toLowerCase().trim()]?.km || 0) : 0;
+      return { id, km: cachedKm };
+    });
+
+    const totalStopKm = stopKms.reduce((s, d) => s + d.km, 0);
+
+    if (totalStopKm > 0) {
+      // Distance-ratio split: further = larger share
+      let assigned = 0;
+      stopKms.forEach((d, i) => {
+        const ratio = d.km / totalStopKm;
+        // Last invoice absorbs rounding difference
+        const amount = i === stopKms.length - 1
+          ? Math.round((totalCost - assigned) * 100) / 100
+          : Math.round(ratio * totalCost * 100) / 100;
+        tripInvShares[d.id] = { km: d.km, ratio, amount };
+        assigned += amount;
+      });
+    } else {
+      // Fallback: equal split when no distances are known
+      const share = Math.round(totalCost / count * 100) / 100;
+      checkedIds.forEach(id => tripInvShares[id] = { km: 0, ratio: 1 / count, amount: share });
+    }
+  }
+
+  const hasDistances = Object.values(tripInvShares).some(s => s.km > 0);
+  document.getElementById('tripTotalDisplay').textContent = fmtRM(totalCost);
+  document.getElementById('tripShareDisplay').textContent =
+    totalCost > 0 ? (hasDistances ? 'Distance-based' : 'Equal split') : '—';
+
+  renderTripRouteOrder(); // refresh rows to show per-invoice amounts
+
+  const saveBtn = document.getElementById('costSaveBtn');
+  if (saveBtn) saveBtn.textContent = count > 1 && totalCost > 0 ? `Save & split to ${count} invoices` : 'Save';
+}
+async function calculateRouteDistance() {
+  if (tripRouteIds.length < 2) { alert('Select at least one other invoice for the trip.'); return; }
+  const hint = document.getElementById('tripRouteHint');
+
+  // If ALL stops have map pins → use real OSRM multi-stop routing (no API key needed)
+  const allHaveLoc = tripRouteIds.every(id => tripInvLocations[id]);
+  if (allHaveLoc) {
+    hint.textContent = 'Calculating road route…';
+    try {
+      const waypoints = [
+        `${IPOH_OFFICE.lng},${IPOH_OFFICE.lat}`,
+        ...tripRouteIds.map(id => `${tripInvLocations[id].lng},${tripInvLocations[id].lat}`),
+        `${IPOH_OFFICE.lng},${IPOH_OFFICE.lat}`
+      ].join(';');
+      const resp = await fetch(`https://router.project-osrm.org/route/v1/driving/${waypoints}?overview=false`);
+      const data = await resp.json();
+      if (data.code === 'Ok' && data.routes.length) {
+        const km = Math.round(data.routes[0].distance / 1000);
+        const mins = Math.round(data.routes[0].duration / 60);
+        document.getElementById('fTripTotalKm').value = km;
+        _lastTripLegs = { stopIds: [...tripRouteIds], stopLocations: tripRouteIds.map(id => tripInvLocations[id]) };
+        hint.innerHTML = `📍 Real road route: ${km} km · ~${mins} min &nbsp;<button onclick="showTripRouteOnMap()" style="background:#1a3a6a;border:none;border-radius:4px;color:#4fc3f7;padding:3px 10px;font-size:11px;cursor:pointer">🗺 View Route</button>`;
+        updateTripShare();
+        return;
+      }
+    } catch(e) {}
+    hint.textContent = 'OSRM routing failed. Try AI estimate instead.';
+    return;
+  }
+
+  // Fallback: AI estimate using city names
+  const missingLoc = tripRouteIds.filter(id => !tripInvLocations[id]);
+  if (missingLoc.length && missingLoc.length < tripRouteIds.length) {
+    hint.textContent = `${missingLoc.length} stop(s) missing map pin — using AI estimate for those.`;
+  }
+  const key = getClaudeKey();
+  if (!key) {
+    const k = prompt('Paste your Claude API key (needed for AI route estimate):');
+    if (!k || !k.trim()) return;
+    localStorage.setItem(CLAUDE_KEY_STORE, k.trim());
+  }
+  const cache = getTransportCache();
+  const stops = tripRouteIds.map(id => {
+    const inv = state.invoices.find(i => i.id === id);
+    const cust = inv ? (inv.customer||'') : '';
+    return cache[cust.toLowerCase().trim()]?.city || cust;
+  });
+  const route = ['Ipoh, Perak', ...stops, 'Ipoh, Perak'].join(' → ');
+  hint.textContent = 'AI calculating route…';
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': getClaudeKey(), 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-allow-browser': 'true' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 80,
+        messages: [{ role: 'user', content: `Estimate total driving distance in km for this road route in Malaysia: ${route}. Reply with ONLY a number (the total km, no text).` }]
+      })
+    });
+    const data = await resp.json();
+    const text = (data.content?.[0]?.text || '').trim();
+    const km = parseFloat(text.replace(/[^\d.]/g, ''));
+    if (!isNaN(km) && km > 0) {
+      document.getElementById('fTripTotalKm').value = km;
+      hint.textContent = `🤖 AI estimate: ${route} ≈ ${km} km. Edit if needed.`;
+      updateTripShare();
+    } else {
+      hint.textContent = 'Could not calculate. Enter total km manually.';
+    }
+  } catch(e) {
+    hint.textContent = 'AI failed. Enter total km manually.';
+  }
+}
+
+// ---- Transport cost calculator ----
+// ---- Vehicle Rates ----
+const VEHICLE_RATES_KEY = 'iht_vehicle_rates';
+const VEHICLE_DEFAULTS = { Lorry: 1.20, Van: 1.00, Maxus: 1.00 };
+
+function getVehicleRates() {
+  try { const s = localStorage.getItem(VEHICLE_RATES_KEY); return s ? { ...VEHICLE_DEFAULTS, ...JSON.parse(s) } : { ...VEHICLE_DEFAULTS }; }
+  catch { return { ...VEHICLE_DEFAULTS }; }
+}
+function populateVehicleDropdowns(keepSelection) {
+  const rates = getVehicleRates();
+  const opts = Object.entries(rates).map(([name, rate]) =>
+    `<option value="${name}|${rate.toFixed(2)}">${name} (RM${rate.toFixed(2)}/km)</option>`
+  ).join('');
+  ['fTransportVehicle', 'fTripVehicle'].forEach(selId => {
+    const el = document.getElementById(selId);
+    if (!el) return;
+    const prev = keepSelection ? el.value.split('|')[0] : '';
+    el.innerHTML = opts;
+    if (prev) {
+      const match = Array.from(el.options).find(o => o.value.startsWith(prev + '|'));
+      if (match) el.value = match.value;
+    }
+  });
+}
+function openVehicleRatesModal() {
+  const rates = getVehicleRates();
+  document.getElementById('vehicleRatesList').innerHTML = Object.entries(rates).map(([name, rate]) =>
+    `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <span style="color:#e0e0e0;min-width:55px;font-size:13px">${name}</span>
+      <span style="color:#aaa;font-size:12px">RM</span>
+      <input id="vrate-${name}" type="number" value="${rate.toFixed(2)}" min="0" step="0.01"
+        style="flex:1;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px">
+      <span style="color:#aaa;font-size:12px">/km</span>
+    </div>`
+  ).join('');
+  document.getElementById('vehicleRatesBg').classList.add('open');
+}
+function closeVehicleRatesModal() {
+  document.getElementById('vehicleRatesBg').classList.remove('open');
+}
+function saveVehicleRatesModal() {
+  const rates = getVehicleRates();
+  Object.keys(rates).forEach(name => {
+    const el = document.getElementById(`vrate-${name}`);
+    if (el) { const v = parseFloat(el.value); if (!isNaN(v) && v >= 0) rates[name] = v; }
+  });
+  localStorage.setItem(VEHICLE_RATES_KEY, JSON.stringify(rates));
+  syncSettingToFirebase('vehicleRates', rates);
+  populateVehicleDropdowns(true);
+  closeVehicleRatesModal();
+}
+
+function syncSettingToFirebase(key, value) {
+  // Skip in TEST_MODE to avoid writing test data into production Firebase
+  if (window.TEST_MODE) return;
+  try { firebase.database().ref('appSettings').update({ [key]: value }); } catch(e) {}
+}
+
+const TRANSPORT_CACHE_KEY = 'iht_transport_cache';
+let currentCostCustomer = '';
+function getTransportCache() {
+  try { return JSON.parse(localStorage.getItem(TRANSPORT_CACHE_KEY) || '{}'); } catch(e) { return {}; }
+}
+function saveTransportCache(cache) {
+  localStorage.setItem(TRANSPORT_CACHE_KEY, JSON.stringify(cache));
+  syncSettingToFirebase('transportCache', cache);
+}
+
+// ---- Cache Manager ----
+function openCacheManager() {
+  renderCacheManagerList();
+  document.getElementById('cacheManagerBg').classList.add('open');
+}
+function closeCacheManager() {
+  document.getElementById('cacheManagerBg').classList.remove('open');
+}
+function renderCacheManagerList() {
+  const cache = getTransportCache();
+  const keys = Object.keys(cache).sort();
+  const el = document.getElementById('cacheManagerList');
+  if (!keys.length) {
+    el.innerHTML = '<div style="color:#555;font-size:13px;text-align:center;padding:20px">No cached entries yet.</div>';
+    return;
+  }
+  el.innerHTML = keys.map((k, idx) => {
+    const e = cache[k];
+    const dateStr = e.cachedAt ? new Date(e.cachedAt).toLocaleDateString('en-MY') : '—';
+    const eid = `cm${idx}`;
+    const displayName = k.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    const vOpts = ['Lorry','Van','Maxus'].map(v =>
+      `<option value="${v}" ${e.vehicle===v?'selected':''}>${v}</option>`).join('');
+    return `<div style="border:1px solid #1a3a6a;border-radius:6px;padding:10px 12px;margin-bottom:8px;background:#071628" data-idx="${idx}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;color:#4fc3f7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${displayName}</div>
+          <div id="${eid}-view" style="margin-top:5px;display:flex;gap:12px;flex-wrap:wrap">
+            <span style="font-size:12px;color:#e0e0e0">📍 ${e.city||'—'}</span>
+            <span style="font-size:12px;color:#e0e0e0">🚗 ${e.vehicle||'—'}</span>
+            <span style="font-size:12px;color:#5dfc8d">${e.km||'—'} km one-way</span>
+            <span style="font-size:11px;color:#555">${dateStr}</span>
+          </div>
+          <div id="${eid}-edit" style="display:none;margin-top:8px">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div>
+                <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">City / Area</label>
+                <input id="${eid}-city" value="${(e.city||'').replace(/"/g,'&quot;')}" style="width:130px;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px">
+              </div>
+              <div>
+                <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">One-way km</label>
+                <input id="${eid}-km" type="number" value="${e.km||''}" min="0" style="width:80px;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px">
+              </div>
+              <div>
+                <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">Vehicle</label>
+                <select id="${eid}-veh" style="background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px">${vOpts}</select>
+              </div>
+              <button data-action="save" data-idx="${idx}" style="background:#1a6a3a;border:none;border-radius:4px;color:#fff;padding:5px 12px;font-size:12px;cursor:pointer">Save</button>
+              <button data-action="cancel" data-idx="${idx}" style="background:none;border:1px solid #555;border-radius:4px;color:#aaa;padding:5px 10px;font-size:12px;cursor:pointer">Cancel</button>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button data-action="edit" data-idx="${idx}" style="background:none;border:1px solid #1a3a6a;border-radius:4px;color:#4fc3f7;padding:4px 10px;font-size:11px;cursor:pointer">Edit</button>
+          <button data-action="delete" data-idx="${idx}" style="background:none;border:1px solid #e74c3c;border-radius:4px;color:#e74c3c;padding:4px 10px;font-size:11px;cursor:pointer">Delete</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Attach events via delegation — no inline onclick quoting issues
+  el.onclick = ev => {
+    const btn = ev.target.closest('[data-action]');
+    if (!btn) return;
+    const idx = parseInt(btn.dataset.idx);
+    const k = keys[idx];
+    const eid = `cm${idx}`;
+    const action = btn.dataset.action;
+    if (action === 'edit') {
+      document.getElementById(`${eid}-view`).style.display = 'none';
+      document.getElementById(`${eid}-edit`).style.display = 'block';
+    } else if (action === 'cancel') {
+      document.getElementById(`${eid}-view`).style.display = 'flex';
+      document.getElementById(`${eid}-edit`).style.display = 'none';
+    } else if (action === 'save') {
+      const cache2 = getTransportCache();
+      if (cache2[k]) {
+        cache2[k].city = document.getElementById(`${eid}-city`).value.trim();
+        cache2[k].km = parseFloat(document.getElementById(`${eid}-km`).value) || cache2[k].km;
+        cache2[k].vehicle = document.getElementById(`${eid}-veh`).value;
+        saveTransportCache(cache2);
+      }
+      renderCacheManagerList();
+    } else if (action === 'delete') {
+      if (!confirm(`Delete cached distance for:\n"${k}"?`)) return;
+      const cache2 = getTransportCache();
+      delete cache2[k];
+      saveTransportCache(cache2);
+      renderCacheManagerList();
+    }
+  };
+}
+function clearAllCache() {
+  if (!confirm('Clear ALL cached transport distances? This cannot be undone.')) return;
+  localStorage.removeItem(TRANSPORT_CACHE_KEY);
+  renderCacheManagerList();
+}
+function initTransportCalc(customerName) {
+  currentCostCustomer = customerName || '';
+  const cached = getTransportCache()[(customerName||'').toLowerCase().trim()];
+  const kmEl = document.getElementById('fTransportKm');
+  const vehicleEl = document.getElementById('fTransportVehicle');
+  const hintEl = document.getElementById('transportCityHint');
+  const cacheEl = document.getElementById('transportCacheInfo');
+  if (cached) {
+    kmEl.value = cached.km;
+    if (cached.vehicle) {
+      for (const opt of vehicleEl.options) { if (opt.value.startsWith(cached.vehicle + '|')) { opt.selected = true; break; } }
+    }
+    cacheEl.textContent = `✓ Cached: ${cached.city}, ${cached.km} km — ${cached.vehicle || 'vehicle not set'}`;
+    cacheEl.style.display = 'block';
+    hintEl.textContent = '';
+  } else {
+    kmEl.value = '';
+    cacheEl.style.display = 'none';
+    hintEl.textContent = 'No cached distance — enter manually, use 🤖 AI or 📍 Map.';
+  }
+  updateTransportCalc();
+}
+function getVehicleInfo(selectId) {
+  const val = (document.getElementById(selectId).value || 'Lorry|1.20').split('|');
+  return { name: val[0], rate: parseFloat(val[1]) || 1.00 };
+}
+function onVehicleChange(target) {
+  if (target === 'transport') updateTransportCalc();
+  else updateTripShare();
+}
+function updateTransportCalc() {
+  const km = parseFloat(document.getElementById('fTransportKm').value) || 0;
+  const { rate } = getVehicleInfo('fTransportVehicle');
+  document.getElementById('transportCalcAmt').textContent = fmtRM(Math.round(km * 2 * rate * 100) / 100);
+}
+async function aiEstimateDistance() {
+  let key = getClaudeKey();
+  if (!key) {
+    key = prompt('Paste your Claude API key to use AI estimate (saved locally for this test session):');
+    if (!key || !key.trim()) return;
+    localStorage.setItem(CLAUDE_KEY_STORE, key.trim());
+    key = key.trim();
+  }
+  const btn = document.getElementById('aiEstimateBtn');
+  btn.textContent = '⏳'; btn.disabled = true;
+  document.getElementById('transportCityHint').textContent = 'Asking AI…';
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-allow-browser': 'true' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 60,
+        messages: [{ role: 'user', content: `Malaysian company: "${currentCostCustomer}". Estimate the driving distance by road in km from Ipoh, Perak (specifically from Kawasan Perindustrian Ringan Kinta Jaya, 31350 Ipoh) to their most likely office or site location. Reply ONLY in this exact format: CITY: [city name], KM: [number]. If unknown reply: UNKNOWN` }]
+      })
+    });
+    const data = await resp.json();
+    const text = (data.content?.[0]?.text || '').trim();
+    const cityM = text.match(/CITY:\s*([^,\n]+)/i);
+    const kmM = text.match(/KM:\s*(\d+)/i);
+    if (cityM && kmM) {
+      const city = cityM[1].trim(), km = parseInt(kmM[1]);
+      document.getElementById('fTransportKm').value = km;
+      document.getElementById('transportCityHint').textContent = `AI estimate: ${city}, ~${km} km. Edit if needed, then click "+ Add to Items".`;
+      updateTransportCalc();
+    } else {
+      document.getElementById('transportCityHint').textContent = 'AI could not estimate. Please enter distance manually.';
+    }
+  } catch(e) {
+    document.getElementById('transportCityHint').textContent = 'AI lookup failed. Enter distance manually.';
+  }
+  btn.textContent = '🤖 AI'; btn.disabled = false;
+}
+function addTransportToCost() {
+  const km = parseFloat(document.getElementById('fTransportKm').value) || 0;
+  const { name: vehicleName, rate } = getVehicleInfo('fTransportVehicle');
+  const amt = Math.round(km * 2 * rate * 100) / 100;
+  if (!amt) { alert('Enter a distance and select a vehicle first.'); return; }
+  // Check for existing transport row and offer to replace
+  let existingRow = null;
+  document.querySelectorAll('#costItemsList .cost-item-row').forEach(row => {
+    const desc = row.querySelector('.cost-item-desc').value.trim().toLowerCase();
+    if (desc.startsWith('transport')) existingRow = row;
+  });
+  if (existingRow) {
+    const oldAmt = existingRow.querySelector('.cost-item-amt').value;
+    if (!confirm(`Existing transport entry found (RM ${oldAmt}).\nReplace with new amount (${fmtRM(amt)})?`)) return;
+    existingRow.remove();
+  }
+  _addCostItemRow(`Transport (${vehicleName})`, amt);
+  _updateCostTotal();
+  // Cache confirmed distance + vehicle
+  const hint = document.getElementById('transportCityHint').textContent;
+  const cityMatch = hint.match(/AI estimate:\s*([^,~]+)/);
+  const city = cityMatch ? cityMatch[1].trim() : currentCostCustomer;
+  const cache = getTransportCache();
+  cache[currentCostCustomer.toLowerCase().trim()] = { km, rate, vehicle: vehicleName, city, cachedAt: Date.now() };
+  localStorage.setItem(TRANSPORT_CACHE_KEY, JSON.stringify(cache));
+  document.getElementById('transportCacheInfo').textContent = `✓ Cached: ${city}, ${km} km — ${vehicleName}`;
+  document.getElementById('transportCacheInfo').style.display = 'block';
+  document.getElementById('transportCityHint').textContent = `✓ Transport (${vehicleName}) added to cost items.`;
+}
+
+// ---- Map Picker ----
+const IPOH_OFFICE = { lat: 4.5635, lng: 101.1095 }; // 18, Hala Rapat Baru 20, Kinta Jaya Light Industrial Estate, Ipoh
+function getOffice() { return IPOH_OFFICE; }
+let mapPicker = null, mapMarkerPin = null, mapPickerKm = 0, mapPickerTarget = 'transport';
+let mapPickerLat = 0, mapPickerLng = 0, mapPickerTripInvId = null;
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+let _mapSearchResults = [];
+let _mapSearchTimeout = null;
+
+function onMapSearchInput() {
+  clearTimeout(_mapSearchTimeout);
+  _mapSearchTimeout = setTimeout(doMapSearch, 500);
+}
+
+async function doMapSearch() {
+  const q = document.getElementById('mapSearchInput').value.trim();
+  const resultsEl = document.getElementById('mapSearchResults');
+  if (!q) { resultsEl.style.display = 'none'; return; }
+  resultsEl.style.display = 'block';
+  resultsEl.innerHTML = '<div style="padding:8px 12px;color:#aaa;font-size:12px">Searching…</div>';
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=6&countrycodes=my`;
+    const resp = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+    const data = await resp.json();
+    _mapSearchResults = data;
+    if (!data.length) {
+      resultsEl.innerHTML = '<div style="padding:8px 12px;color:#888;font-size:12px">No results. Try a different search term.</div>';
+      return;
+    }
+    resultsEl.innerHTML = data.map((r, i) => {
+      const display = r.display_name.length > 90 ? r.display_name.substring(0, 90) + '…' : r.display_name;
+      return `<div onclick="selectMapSearchResult(${i})"
+        style="padding:9px 12px;border-bottom:1px solid #1a3a6a;cursor:pointer;font-size:12px;color:#e0e0e0;line-height:1.4"
+        onmouseover="this.style.background='#1a3a6a'" onmouseout="this.style.background=''">
+        📍 ${display}
+      </div>`;
+    }).join('');
+  } catch(e) {
+    resultsEl.innerHTML = '<div style="padding:8px 12px;color:#e74c3c;font-size:12px">Search failed. Check your connection.</div>';
+  }
+}
+
+function selectMapSearchResult(i) {
+  const r = _mapSearchResults[i];
+  if (!r) return;
+  document.getElementById('mapSearchResults').style.display = 'none';
+  document.getElementById('mapSearchInput').value = r.display_name.split(',').slice(0, 3).join(', ');
+  const lat = parseFloat(r.lat), lng = parseFloat(r.lon);
+  mapPicker.setView([lat, lng], 16);
+  onMapPickerClick({ latlng: { lat, lng } });
+}
+
+let officeMarker = null;
+let mapPickerMode = 'pick'; // 'pick' or 'route'
+let _lastTripLegs = null;
+const LEG_COLORS = ['#e74c3c','#f39c12','#2ecc71','#3498db','#9b59b6','#1abc9c','#e67e22'];
+
+function _initMapPicker() {
+  const office = getOffice();
+  mapPicker = L.map('mapPickerEl').setView([office.lat, office.lng], 10);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors', maxZoom: 19
+  }).addTo(mapPicker);
+  officeMarker = L.marker([office.lat, office.lng], {
+    icon: L.divIcon({ html: '<div style="font-size:22px;line-height:1">🏢</div>', className: '', iconSize: [24,24], iconAnchor: [12,12] })
+  }).addTo(mapPicker).bindTooltip('Ipoh Hydrotech Office (click map to move pin)', { permanent: false, direction: 'top' });
+  mapPicker.on('click', onMapPickerClick);
+}
+
+function _clearMapOverlays() {
+  if (mapMarkerPin) { mapMarkerPin.remove(); mapMarkerPin = null; }
+  if (mapPicker._routeLine) { mapPicker._routeLine.remove(); mapPicker._routeLine = null; }
+  (mapPicker._legLines || []).forEach(l => l.remove());
+  mapPicker._legLines = [];
+  (mapPicker._stopMarkers || []).forEach(m => m.remove());
+  mapPicker._stopMarkers = [];
+}
+
+function openMapPicker(target) {
+  mapPickerTarget = target || 'transport';
+  mapPickerMode = 'pick';
+  mapPickerKm = 0;
+  document.getElementById('mapPickerTitle').textContent = '📍 Set Delivery Location';
+  document.getElementById('mapPickerSubtitle').textContent = 'Click anywhere on the map to drop a pin';
+  document.getElementById('mapPickerInfo').textContent = 'No location selected';
+  document.getElementById('mapPickerDist').textContent = '';
+  document.getElementById('mapPickerConfirmBtn').disabled = true;
+  document.getElementById('mapPickerConfirmBtn').style.display = '';
+  document.getElementById('mapPickerMyLocBtn').style.display = '';
+  document.getElementById('mapSearchBar').style.display = '';
+  document.getElementById('mapSearchInput').value = '';
+  document.getElementById('mapSearchResults').style.display = 'none';
+  document.getElementById('mapPickerBg').classList.add('open');
+  setTimeout(() => {
+    if (!mapPicker) { _initMapPicker(); } else { _clearMapOverlays(); }
+    mapPicker.invalidateSize();
+  }, 150);
+}
+
+async function onMapPickerClick(e) {
+  if (mapPickerMode === 'route') return; // read-only in route view
+  const { lat, lng } = e.latlng;
+  mapPickerLat = lat; mapPickerLng = lng;
+  _clearMapOverlays();
+  mapMarkerPin = L.marker([lat, lng]).addTo(mapPicker);
+  document.getElementById('mapPickerInfo').textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  document.getElementById('mapPickerDist').textContent = 'Calculating road distance…';
+  document.getElementById('mapPickerConfirmBtn').disabled = true;
+  const office = getOffice();
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${office.lng},${office.lat};${lng},${lat}?overview=full&geometries=geojson`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (data.code === 'Ok' && data.routes.length) {
+      const route = data.routes[0];
+      mapPickerKm = Math.round(route.distance / 1000);
+      const mins = Math.round(route.duration / 60);
+      document.getElementById('mapPickerDist').textContent = `${mapPickerKm} km one-way · ~${mins} min (actual road route)`;
+      mapPicker._routeLine = L.geoJSON(route.geometry, { style: { color:'#5dfc8d', weight:3, opacity:0.8 } }).addTo(mapPicker);
+    } else {
+      throw new Error('No route');
+    }
+  } catch(e) {
+    mapPickerKm = Math.round(haversineKm(office.lat, office.lng, lat, lng) * 1.35);
+    document.getElementById('mapPickerDist').textContent = `≈ ${mapPickerKm} km one-way (estimated — routing unavailable)`;
+    mapPicker._routeLine = L.polyline([[office.lat, office.lng],[lat,lng]], { color:'#f39c12', weight:2, dashArray:'6,4', opacity:0.7 }).addTo(mapPicker);
+  }
+  document.getElementById('mapPickerConfirmBtn').disabled = false;
+}
+
+function useMyLocation() {
+  if (!navigator.geolocation) { alert('Geolocation not supported by your browser.'); return; }
+  document.getElementById('mapPickerInfo').textContent = 'Getting your location…';
+  navigator.geolocation.getCurrentPosition(pos => {
+    const lat = pos.coords.latitude, lng = pos.coords.longitude;
+    mapPicker.setView([lat, lng], 16);
+    onMapPickerClick({ latlng: { lat, lng } });
+  }, () => {
+    document.getElementById('mapPickerInfo').textContent = 'Could not get location. Click the map manually.';
+  });
+}
+
+function confirmMapLocation() {
+  if (mapPickerTarget === 'transport') {
+    document.getElementById('fTransportKm').value = mapPickerKm;
+    document.getElementById('transportCityHint').textContent = `📍 Location set from map: ~${mapPickerKm} km (one-way road estimate)`;
+    updateTransportCalc();
+  } else if (mapPickerTarget === 'trip') {
+    document.getElementById('fTripTotalKm').value = mapPickerKm;
+    document.getElementById('tripRouteHint').textContent = `📍 Distance set from map: ~${mapPickerKm} km`;
+    updateTripShare();
+  } else if (mapPickerTarget === 'tripInv' && mapPickerTripInvId) {
+    const label = document.getElementById('mapPickerInfo').textContent;
+    tripInvLocations[mapPickerTripInvId] = { lat: mapPickerLat, lng: mapPickerLng, label, km: mapPickerKm };
+    renderTripRouteOrder();
+  }
+  closeMapPicker();
+}
+
+function openMapPickerForTripInv(invId) {
+  mapPickerTripInvId = invId;
+  // Pre-clear any existing pin so map feels fresh for this stop
+  openMapPicker('tripInv');
+  // If already has a location, pan to it after map opens
+  const existing = tripInvLocations[invId];
+  if (existing) {
+    setTimeout(() => {
+      mapPicker.setView([existing.lat, existing.lng], 15);
+      onMapPickerClick({ latlng: { lat: existing.lat, lng: existing.lng } });
+    }, 300);
+  }
+}
+
+function closeMapPicker() {
+  document.getElementById('mapPickerBg').classList.remove('open');
+  mapPickerMode = 'pick';
+}
+
+async function showTripRouteOnMap() {
+  if (!_lastTripLegs || !_lastTripLegs.stopLocations.length) return;
+  const office = getOffice();
+  const allStops = [office, ..._lastTripLegs.stopLocations, office];
+
+  // Switch map to route-view mode
+  mapPickerMode = 'route';
+  document.getElementById('mapPickerTitle').textContent = '🗺 Trip Route Preview';
+  document.getElementById('mapPickerSubtitle').textContent = `${_lastTripLegs.stopLocations.length} stop(s) — fetching road segments…`;
+  document.getElementById('mapPickerInfo').textContent = '';
+  document.getElementById('mapPickerDist').textContent = '';
+  document.getElementById('mapPickerConfirmBtn').style.display = 'none';
+  document.getElementById('mapPickerMyLocBtn').style.display = 'none';
+  document.getElementById('mapSearchBar').style.display = 'none';
+  document.getElementById('mapSearchResults').style.display = 'none';
+  document.getElementById('mapPickerBg').classList.add('open');
+
+  setTimeout(async () => {
+    if (!mapPicker) { _initMapPicker(); } else { _clearMapOverlays(); }
+    mapPicker.invalidateSize();
+
+    const bounds = L.latLngBounds();
+    // Draw each leg in a different color
+    for (let i = 0; i < allStops.length - 1; i++) {
+      const from = allStops[i], to = allStops[i + 1];
+      const color = LEG_COLORS[i % LEG_COLORS.length];
+      try {
+        const resp = await fetch(`https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`);
+        const data = await resp.json();
+        if (data.code === 'Ok' && data.routes.length) {
+          const line = L.geoJSON(data.routes[0].geometry, { style: { color, weight: 5, opacity: 0.85 } }).addTo(mapPicker);
+          mapPicker._legLines.push(line);
+          bounds.extend(line.getBounds());
+        }
+      } catch(e) {
+        const line = L.polyline([[from.lat, from.lng],[to.lat, to.lng]], { color, weight: 3, dashArray:'6,4' }).addTo(mapPicker);
+        mapPicker._legLines.push(line);
+      }
+    }
+
+    // Office start/end marker
+    const officeIcon = L.divIcon({ html: '<div style="font-size:22px;line-height:1">🏢</div>', className: '', iconSize:[24,24], iconAnchor:[12,12] });
+    const om = L.marker([office.lat, office.lng], { icon: officeIcon }).addTo(mapPicker).bindTooltip('Ipoh Hydrotech (start/end)', { direction:'top' });
+    mapPicker._stopMarkers.push(om);
+    bounds.extend([office.lat, office.lng]);
+
+    // Numbered stop markers
+    _lastTripLegs.stopLocations.forEach((loc, i) => {
+      const inv = state.invoices.find(inv => inv.id === _lastTripLegs.stopIds[i]);
+      const label = inv ? inv.customer : `Stop ${i+1}`;
+      const color = LEG_COLORS[i % LEG_COLORS.length];
+      const icon = L.divIcon({
+        html: `<div style="background:${color};color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,0.5)">${i+1}</div>`,
+        className: '', iconSize:[24,24], iconAnchor:[12,12]
+      });
+      const m = L.marker([loc.lat, loc.lng], { icon }).addTo(mapPicker).bindTooltip(label, { direction:'top', permanent: false });
+      mapPicker._stopMarkers.push(m);
+      bounds.extend([loc.lat, loc.lng]);
+    });
+
+    if (bounds.isValid()) mapPicker.fitBounds(bounds, { padding: [30, 30] });
+    document.getElementById('mapPickerSubtitle').textContent = `${_lastTripLegs.stopLocations.length} stop(s) shown. Each color = one road segment.`;
+  }, 200);
+}
+
 function openCostView(id) {
   const inv = state.invoices.find(i => i.id === id);
   if (!inv) return;
@@ -2380,8 +3339,47 @@ function saveCostModal() {
   document.querySelectorAll('#costItemsList .cost-item-row').forEach(row => {
     const desc = row.querySelector('.cost-item-desc').value.trim();
     const amt = parseFloat(String(row.querySelector('.cost-item-amt').value).replace(/,/g, ''));
-    if (!isNaN(amt) && amt > 0) items.push({desc, amount: amt});
+    if (!isNaN(amt) && amt > 0) {
+      const item = { desc, amount: amt };
+      if (row.dataset.tripId) item.tripId = row.dataset.tripId;
+      items.push(item);
+    }
   });
+
+  // Delivery trip: calculate share and apply to other invoices
+  const tripEnabled = document.getElementById('tripEnabled').checked;
+  if (tripEnabled) {
+    const { name: tripVehicle } = getVehicleInfo('fTripVehicle');
+    const checkedBoxes = document.querySelectorAll('.trip-inv-cb:checked');
+    const tripInvIds = Array.from(checkedBoxes).map(cb => cb.dataset.id).filter(id => id !== costModalId);
+    const currentShare = tripInvShares[costModalId];
+    if (currentShare && currentShare.amount > 0) {
+      const tripId = uid();
+      items.push({ desc: `Transport (${tripVehicle} – Shared Trip)`, amount: currentShare.amount, tripId });
+      const hasExisting = tripInvIds.some(tid => {
+        const tInv = state.invoices.find(i => i.id === tid);
+        return tInv && (tInv.costItems||[]).some(it => it.desc.toLowerCase().startsWith('transport') && !it.desc.includes('Shared Trip'));
+      });
+      if (hasExisting && !confirm('One or more selected invoices already have a Transport cost entry.\nContinue? The shared trip cost will be added alongside existing entries.')) return;
+      const appliedTo = [];
+      tripInvIds.forEach(tid => {
+        const tInv = state.invoices.find(i => i.id === tid);
+        if (!tInv) return;
+        const tShare = tripInvShares[tid];
+        if (!tShare || tShare.amount <= 0) return;
+        if (!Array.isArray(tInv.costItems)) tInv.costItems = [];
+        tInv.costItems = tInv.costItems.filter(it => !it.desc.includes('Shared Trip'));
+        tInv.costItems.push({ desc: `Transport (${tripVehicle} – Shared Trip)`, amount: tShare.amount, tripId });
+        tInv.cost = tInv.costItems.reduce((s, i) => s + i.amount, 0);
+        tInv.updatedAt = Date.now();
+        appliedTo.push(`${tInv.invoiceNo||tInv.id} — ${fmtRM(tShare.amount)} (${Math.round(tShare.ratio*100)}%)`);
+      });
+      if (appliedTo.length) {
+        setTimeout(() => alert(`✓ Transport split applied (distance-based):\n• ${inv.invoiceNo} — ${fmtRM(currentShare.amount)} (${Math.round(currentShare.ratio*100)}%)\n• ${appliedTo.join('\n• ')}`), 100);
+      }
+    }
+  }
+
   inv.costItems = items;
   inv.cost = items.reduce((s, i) => s + i.amount, 0);
   inv.updatedAt = Date.now();
@@ -3823,6 +4821,18 @@ function init() {
     if (saved) applyStateData(JSON.parse(saved));
   } catch(e) { console.error('Load error:',e); }
   renderSalesmanFilter(); renderMonthFilter(); renderSummary(); renderList();
+
+  // TEST_MODE: bypass Firebase auth entirely — auto-login as management
+  if (TEST_MODE) {
+    session = { name: 'Test User', email: 'test@test.com', role: 'management', salesman: null, uid: 'test-uid' };
+    // Load live data from the live app's localStorage (shared in same browser, same origin).
+    _loadLiveData();
+    renderSalesmanFilter(); renderMonthFilter(); renderSummary(); renderList();
+    document.getElementById('authOverlay').classList.add('hidden');
+    setSyncStatus('synced');
+    onLoggedIn();
+    return;
+  }
 
   if (!fbReady) { showLoginScreen(); return; }
   setSyncStatus('syncing');

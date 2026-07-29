@@ -3251,13 +3251,49 @@ async function doMapSearch() {
   if (!q) { resultsEl.style.display = 'none'; return; }
   resultsEl.style.display = 'block';
   resultsEl.innerHTML = '<div style="padding:8px 12px;color:#aaa;font-size:12px">Searching…</div>';
+
+  const gKey = getGoogleKey();
+  if (gKey) {
+    // Google Places Text Search — works from browser with unrestricted key
+    try {
+      const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(q + ' Malaysia')}&key=${gKey}`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (data.status === 'OK' && data.results?.length) {
+        _mapSearchResults = data.results.map(r => ({
+          lat: r.geometry.location.lat, lon: r.geometry.location.lng,
+          display_name: r.name + (r.formatted_address ? ' · ' + r.formatted_address : '')
+        }));
+        resultsEl.innerHTML = _mapSearchResults.map((r, i) => {
+          const display = r.display_name.length > 100 ? r.display_name.substring(0, 100) + '…' : r.display_name;
+          return `<div onclick="selectMapSearchResult(${i})"
+            style="padding:9px 12px;border-bottom:1px solid #1a3a6a;cursor:pointer;font-size:12px;color:#e0e0e0;line-height:1.4"
+            onmouseover="this.style.background='#1a3a6a'" onmouseout="this.style.background=''">
+            📍 ${display}
+          </div>`;
+        }).join('');
+        return;
+      } else if (data.status === 'ZERO_RESULTS') {
+        resultsEl.innerHTML = '<div style="padding:8px 12px;color:#888;font-size:12px">No results found. Try a different name or address.</div>';
+        return;
+      } else {
+        // Show Google error status so we can debug
+        resultsEl.innerHTML = `<div style="padding:8px 12px;color:#f39c12;font-size:12px">Google: ${data.status||'error'}${data.error_message?' — '+data.error_message:''}. Trying OpenStreetMap…</div>`;
+      }
+    } catch(e) {
+      resultsEl.innerHTML = `<div style="padding:8px 12px;color:#f39c12;font-size:12px">Google search failed (${e.message}). Trying OpenStreetMap…</div>`;
+    }
+  }
+
+  // Nominatim fallback
   try {
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q + ' Malaysia')}&format=json&limit=6&countrycodes=my`;
     const resp = await fetch(url, { headers: { 'Accept-Language': 'en' } });
     const data = await resp.json();
     _mapSearchResults = data.map(r => ({ lat: parseFloat(r.lat), lon: parseFloat(r.lon), display_name: r.display_name }));
     if (!data.length) {
-      resultsEl.innerHTML = '<div style="padding:8px 12px;color:#888;font-size:12px">Not found. Try an address or area (e.g. "Jalan Raja Ekram, Ipoh"). For company lookup, close this and use 🔍 Find.</div>';
+      resultsEl.innerHTML += '<div style="padding:8px 12px;color:#888;font-size:12px">Not found in OpenStreetMap either. Try the street address or use 🔍 Find button instead.</div>';
       return;
     }
     resultsEl.innerHTML = data.map((r, i) => {
@@ -3269,7 +3305,7 @@ async function doMapSearch() {
       </div>`;
     }).join('');
   } catch(e) {
-    resultsEl.innerHTML = '<div style="padding:8px 12px;color:#e74c3c;font-size:12px">Search unavailable. Try clicking the map directly.</div>';
+    resultsEl.innerHTML += '<div style="padding:8px 12px;color:#e74c3c;font-size:12px">Search unavailable. Try clicking the map directly.</div>';
   }
 }
 

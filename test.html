@@ -1665,7 +1665,13 @@ let fbReady = false, fbRef = null, usersRef = null;
 function initFirebase() {
   try {
     firebase.initializeApp(FB_CONFIG);
-    usersRef = firebase.database().ref('invoiceUsers');
+    // Stub usersRef — real Firebase auth not available in TEST_MODE (file:// origin)
+    const testUserEntry = { 'test-uid': { name: 'Test User', email: 'test@test.com', role: 'management', createdAt: Date.now() } };
+    usersRef = {
+      once() { return Promise.resolve({ val() { return testUserEntry; } }); },
+      child() { return { once() { return Promise.resolve({ val() { return null; } }); }, on() {}, set() { return Promise.resolve(); } }; },
+      on() {}, off() {}, update() { return Promise.resolve(); }
+    };
     // fbRef: self-fires once with current state so onLoggedIn's offline-timeout is cleared,
     // then behaves as connected. Writes are always no-ops to protect live data.
     fbRef = {

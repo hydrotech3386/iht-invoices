@@ -557,6 +557,8 @@
     <option value="amount">Amount ↓</option>
     <option value="invoiceNo">Invoice No.</option>
   </select>
+  <button class="filter-select" style="cursor:pointer" onclick="exportListPDF()" title="Export the list as shown to PDF">📄 PDF</button>
+  <button class="filter-select" style="cursor:pointer" onclick="exportListExcel()" title="Export the list as shown to Excel">📊 Excel</button>
 </div>
 
 <div class="summary-toggle" id="summaryToggle" onclick="toggleSummary()">
@@ -1745,7 +1747,9 @@ function renderMonthFilter() {
     }).join('');
 }
 
-function renderList() {
+// Single source of truth for what the list shows. Exports call this too, so a
+// PDF or spreadsheet always contains exactly the rows on screen.
+function getFilteredInvoices() {
   const search = (document.getElementById('searchBox').value||'').toLowerCase();
   const smF = document.getElementById('salesmanFilter').value;
   const mF  = document.getElementById('monthFilter').value;
@@ -1772,6 +1776,12 @@ function renderList() {
     if (sort==='dateAsc')   return (a.invoiceDate||'').localeCompare(b.invoiceDate||'');
     return (b.invoiceDate||'').localeCompare(a.invoiceDate||'');
   });
+  return items;
+}
+
+function renderList() {
+  const items = getFilteredInvoices();
+  const sort = document.getElementById('sortFilter').value;
 
   const el = document.getElementById('invoiceList');
   if (!items.length) {
@@ -2388,6 +2398,384 @@ function saveCostModal() {
   persistState(); renderList();
   closeCostModal();
 }
+
+
+// ============================================================================
+//  Invoice list export — PDF (print view) and Excel (.xlsx)
+//  Both use getFilteredInvoices(), so what you export is what you see.
+// ============================================================================
+
+// Describes the active filters in words, for the report header
+function describeFilters() {
+  const parts = [];
+  parts.push(currentFilter === 'all'
+    ? 'All statuses'
+    : currentFilter.charAt(0).toUpperCase() + currentFilter.slice(1));
+  const mF = document.getElementById('monthFilter').value;
+  if (mF) {
+    const [y, m] = mF.split('-');
+    parts.push(new Date(y, m - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' }));
+  } else parts.push('All months');
+  const smF = document.getElementById('salesmanFilter').value;
+  if (smF) parts.push('Agent: ' + smF);
+  const search = (document.getElementById('searchBox').value || '').trim();
+  if (search) parts.push('Search: "' + search + '"');
+  if (adjPendingFilter) parts.push('Pending date adjustments only');
+  return parts.join('   ·   ');
+}
+function exportFileStem() {
+  const bits = ['IHT-Invoices'];
+  if (currentFilter !== 'all') bits.push(currentFilter);
+  const mF = document.getElementById('monthFilter').value;
+  if (mF) bits.push(mF);
+  const smF = document.getElementById('salesmanFilter').value;
+  if (smF) bits.push(smF.replace(/[^\w-]+/g, '_'));
+  bits.push(new Date().toISOString().slice(0, 10));
+  return bits.join('_');
+}
+
+// Column set, trimmed to what this user is allowed to see
+function exportColumns() {
+  const cols = [
+    { t: 'Invoice No.', w: 15, get: i => i.invoiceNo || '' },
+    { t: 'Date',        w: 12, type: 'date',  get: i => i.invoiceDate || '' },
+    { t: 'Customer',    w: 38, get: i => i.customer || '' },
+    { t: 'Agent',       w: 14, get: i => i.salesman || '' },
+    { t: 'Project Ref', w: 18, get: i => i.projectRef || '' },
+    { t: 'Amount',      w: 14, type: 'money', get: i => totalPayable(i) },
+    { t: 'Credit Note', w: 13, type: 'money', get: i => totalCreditNotes(i) },
+    { t: 'Payable',     w: 14, type: 'money', get: i => effectivePayable(i) },
+    { t: 'Paid',        w: 14, type: 'money', get: i => amountPaid(i) },
+    { t: 'Balance',     w: 14, type: 'money', get: i => Math.max(0, effectivePayable(i) - amountPaid(i)) },
+    { t: 'Status',      w: 11, type: 'center', get: i => (isOverdue(i) ? 'Overdue' : computeStatus(i)).replace(/^./, c => c.toUpperCase()) },
+    { t: 'Age (days)',  w: 11, type: 'int',    get: i => { const d = daysSince(i.invoiceDate); return d === null ? '' : d; } },
+  ];
+  if (canViewCost()) {
+    cols.push({ t: 'Cost', w: 14, type: 'money', get: i => totalCost(i) || 0 });
+  }
+  if (session && session.role === 'management') {
+    cols.push({ t: 'Margin %', w: 11, type: 'pct', get: i => {
+      const ep = effectivePayable(i), tc = totalCost(i);
+      return (!tc || !ep) ? '' : (ep - tc) / ep * 100;
+    } });
+  }
+  return cols;
+}
+
+function saveBlob(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ---------------------------------------------------------------- PDF ------
+// Renders a print-styled document in a new window. The browser's own
+// "Save as PDF" produces the file, so there is no PDF library to load.
+function exportListPDF() {
+  const items = getFilteredInvoices();
+  if (!items.length) { alert('Nothing to export — no invoices match the current filters.'); return; }
+  const cols = exportColumns();
+  const esc = s => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const totals = {};
+  cols.forEach((c, ci) => { if (c.type === 'money') totals[ci] = 0; });
+  const body = items.map(inv => {
+    const overdue = isOverdue(inv);
+    const st = computeStatus(inv);
+    const tds = cols.map((c, ci) => {
+      const v = c.get(inv);
+      if (c.type === 'money') { totals[ci] += (Number(v) || 0); return `<td class="num">${fmtNum(v)}</td>`; }
+      if (c.type === 'pct')   return `<td class="num">${v === '' ? '—' : Number(v).toFixed(1) + '%'}</td>`;
+      if (c.type === 'int')   return `<td class="ctr">${esc(v)}</td>`;
+      if (c.type === 'date')  return `<td class="ctr">${v ? esc(fmtDMY(v)) : ''}</td>`;
+      if (c.type === 'center') {
+        const cls = overdue ? 'overdue' : st;
+        return `<td class="ctr"><span class="pill ${cls}">${esc(v)}</span></td>`;
+      }
+      return `<td>${esc(v)}</td>`;
+    }).join('');
+    return `<tr>${tds}</tr>`;
+  }).join('');
+
+  const foot = cols.map((c, ci) =>
+    ci === 0 ? `<td class="tot-label">Total — ${items.length} invoice${items.length === 1 ? '' : 's'}</td>`
+             : (c.type === 'money' ? `<td class="num">${fmtNum(totals[ci])}</td>` : '<td></td>')
+  ).join('');
+
+  const doc = `<!doctype html><html><head><meta charset="utf-8">
+<title>${esc(exportFileStem())}</title>
+<style>
+  @page { size: A4 landscape; margin: 12mm 10mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Tahoma, sans-serif; color: #0F262C; margin: 0; font-size: 9pt; }
+  .head { display: flex; justify-content: space-between; align-items: flex-end;
+          border-bottom: 2.5pt solid #A2701A; padding-bottom: 7pt; margin-bottom: 4pt; }
+  .co { font-size: 15pt; font-weight: 700; letter-spacing: -0.3pt; }
+  .rt { font-size: 10.5pt; color: #4C666D; margin-top: 2pt; }
+  .meta { text-align: right; font-size: 8pt; color: #4C666D; line-height: 1.6; }
+  .filters { font-size: 8.5pt; color: #A2701A; font-weight: 600; margin: 7pt 0 9pt; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { background: #0F262C; color: #fff; font-size: 7.8pt; font-weight: 600;
+             letter-spacing: 0.4pt; text-transform: uppercase; padding: 5pt 4pt;
+             text-align: left; border: 0.5pt solid #0F262C; }
+  tbody td { padding: 3.6pt 4pt; border: 0.5pt solid #C9D8D6; vertical-align: top; }
+  tbody tr:nth-child(even) td { background: #F4F7F6; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ctr { text-align: center; white-space: nowrap; }
+  tfoot td { padding: 5pt 4pt; border: 0.5pt solid #C9D8D6; border-top: 1.4pt solid #0F262C;
+             font-weight: 700; background: #EDF1F0; }
+  .tot-label { white-space: nowrap; }
+  .pill { display: inline-block; padding: 1pt 5pt; border-radius: 7pt; font-size: 7.4pt;
+          font-weight: 700; border: 0.6pt solid currentColor; }
+  .pill.paid { color: #2C7048; } .pill.partial { color: #A8631C; }
+  .pill.unpaid { color: #4C666D; } .pill.overdue { color: #A33B2E; }
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
+  .foot-note { margin-top: 9pt; font-size: 7.5pt; color: #7A9198; }
+  @media print { .no-print { display: none !important; } }
+  .no-print { position: fixed; top: 10px; right: 10px; }
+  .no-print button { font: inherit; padding: 7px 15px; border: 1px solid #A2701A;
+                     background: #A2701A; color: #fff; border-radius: 4px; cursor: pointer; }
+</style></head><body>
+<div class="no-print"><button onclick="window.print()">Print / Save as PDF</button></div>
+<div class="head">
+  <div><div class="co">Ipoh Hydrotech Engineering Sdn Bhd</div><div class="rt">Invoice Report</div></div>
+  <div class="meta">Generated ${esc(new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }))}<br>${esc((session && session.name) || '')}</div>
+</div>
+<div class="filters">${esc(describeFilters())}</div>
+<table>
+  <thead><tr>${cols.map(c => `<th${c.type === 'money' || c.type === 'pct' ? ' style="text-align:right"' : (c.type === 'center' || c.type === 'int' || c.type === 'date' ? ' style="text-align:center"' : '')}>${esc(c.t)}</th>`).join('')}</tr></thead>
+  <tbody>${body}</tbody>
+  <tfoot><tr>${foot}</tr></tfoot>
+</table>
+<div class="foot-note">Figures in Ringgit Malaysia. Balance is payable less payments received.</div>
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  if (!w) { alert('Please allow pop-ups for this site to export a PDF.'); return; }
+  w.document.write(doc);
+  w.document.close();
+  w.focus();
+  setTimeout(() => { try { w.print(); } catch (e) {} }, 400);
+}
+
+function fmtNum(v) {
+  const n = Number(v) || 0;
+  return n.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtDMY(iso) {
+  const p = String(iso).split('-');
+  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : iso;
+}
+
+// -------------------------------------------------------------- XLSX -------
+// Minimal, dependency-free .xlsx writer. Entries are stored uncompressed,
+// which the format permits, so no deflate implementation is needed.
+function _crc32(buf) {
+  let table = _crc32.table;
+  if (!table) {
+    table = _crc32.table = new Int32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      table[n] = c;
+    }
+  }
+  let crc = -1;
+  for (let i = 0; i < buf.length; i++) crc = (crc >>> 8) ^ table[(crc ^ buf[i]) & 0xFF];
+  return (crc ^ -1) >>> 0;
+}
+function _zipStore(files) {
+  const enc = new TextEncoder();
+  const parts = [], central = [];
+  let offset = 0;
+  files.forEach(f => {
+    const name = enc.encode(f.name);
+    const data = enc.encode(f.data);
+    const crc = _crc32(data), size = data.length;
+    const lh = new Uint8Array(30 + name.length);
+    const lv = new DataView(lh.buffer);
+    lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(6, 0, true);
+    lv.setUint16(8, 0, true); lv.setUint16(10, 0, true); lv.setUint16(12, 0, true);
+    lv.setUint32(14, crc, true); lv.setUint32(18, size, true); lv.setUint32(22, size, true);
+    lv.setUint16(26, name.length, true); lv.setUint16(28, 0, true);
+    lh.set(name, 30);
+    parts.push(lh, data);
+
+    const ch = new Uint8Array(46 + name.length);
+    const cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0, true); cv.setUint16(10, 0, true); cv.setUint16(12, 0, true);
+    cv.setUint16(14, 0, true); cv.setUint32(16, crc, true); cv.setUint32(20, size, true);
+    cv.setUint32(24, size, true); cv.setUint16(28, name.length, true); cv.setUint16(30, 0, true);
+    cv.setUint16(32, 0, true); cv.setUint16(34, 0, true); cv.setUint16(36, 0, true);
+    cv.setUint32(38, 0, true); cv.setUint32(42, offset, true);
+    ch.set(name, 46);
+    central.push(ch);
+    offset += lh.length + size;
+  });
+  const cdSize = central.reduce((s, c) => s + c.length, 0);
+  const eo = new Uint8Array(22);
+  const ev = new DataView(eo.buffer);
+  ev.setUint32(0, 0x06054b50, true); ev.setUint16(4, 0, true); ev.setUint16(6, 0, true);
+  ev.setUint16(8, files.length, true); ev.setUint16(10, files.length, true);
+  ev.setUint32(12, cdSize, true); ev.setUint32(16, offset, true); ev.setUint16(20, 0, true);
+  return new Blob(parts.concat(central, [eo]),
+    { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+const _xe = s => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+const _colName = n => { let s = ''; n++; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; };
+// Excel serial date: whole days since 1899-12-30
+function _excelDate(iso) {
+  if (!iso) return null;
+  const d = new Date(iso + 'T00:00:00Z');
+  if (isNaN(d.getTime())) return null;
+  return Math.floor((d.getTime() - Date.UTC(1899, 11, 30)) / 86400000);
+}
+
+function exportListExcel() {
+  const items = getFilteredInvoices();
+  if (!items.length) { alert('Nothing to export — no invoices match the current filters.'); return; }
+  const cols = exportColumns();
+  const nCols = cols.length;
+  const lastCol = _colName(nCols - 1);
+
+  // Style ids defined in styles.xml below
+  const S = { TITLE: 1, SUB: 2, FILTER: 3, HEAD: 4, TEXT: 5, MONEY: 6, DATE: 7, CTR: 8, TOTT: 9, TOTM: 10, PCT: 11 };
+  const styleFor = t => t === 'money' ? S.MONEY : t === 'date' ? S.DATE
+    : (t === 'center' || t === 'int') ? S.CTR : t === 'pct' ? S.PCT : S.TEXT;
+
+  const rows = [];
+  const cell = (r, c, style, val, kind) => {
+    const ref = _colName(c) + r;
+    if (val === '' || val == null) return `<c r="${ref}" s="${style}"/>`;
+    if (kind === 'n') return `<c r="${ref}" s="${style}"><v>${val}</v></c>`;
+    return `<c r="${ref}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${_xe(val)}</t></is></c>`;
+  };
+
+  rows.push(`<row r="1" ht="21" customHeight="1">${cell(1, 0, S.TITLE, 'Ipoh Hydrotech Engineering Sdn Bhd')}</row>`);
+  rows.push(`<row r="2" ht="16" customHeight="1">${cell(2, 0, S.SUB, 'Invoice Report')}</row>`);
+  rows.push(`<row r="3" ht="15" customHeight="1">${cell(3, 0, S.FILTER, describeFilters())}${cell(3, Math.max(1, nCols - 2), S.FILTER, 'Generated ' + new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }))}</row>`);
+  rows.push('<row r="4"/>');
+  rows.push(`<row r="5" ht="26" customHeight="1">${cols.map((c, i) => cell(5, i, S.HEAD, c.t)).join('')}</row>`);
+
+  const totals = {};
+  cols.forEach((c, i) => { if (c.type === 'money') totals[i] = 0; });
+
+  items.forEach((inv, ri) => {
+    const r = 6 + ri;
+    const cs = cols.map((c, i) => {
+      const v = c.get(inv);
+      if (c.type === 'money') { const n = Number(v) || 0; totals[i] += n; return cell(r, i, S.MONEY, n, 'n'); }
+      if (c.type === 'pct')   return v === '' ? cell(r, i, S.PCT, '') : cell(r, i, S.PCT, (Number(v) / 100).toFixed(4), 'n');
+      if (c.type === 'int')   return v === '' ? cell(r, i, S.CTR, '') : cell(r, i, S.CTR, Number(v), 'n');
+      if (c.type === 'date')  { const sd = _excelDate(v); return sd === null ? cell(r, i, S.DATE, '') : cell(r, i, S.DATE, sd, 'n'); }
+      return cell(r, i, styleFor(c.type), v);
+    }).join('');
+    rows.push(`<row r="${r}">${cs}</row>`);
+  });
+
+  const tr = 6 + items.length;
+  rows.push(`<row r="${tr}" ht="18" customHeight="1">${cols.map((c, i) =>
+    i === 0 ? cell(tr, i, S.TOTT, `Total — ${items.length} invoice${items.length === 1 ? '' : 's'}`)
+            : (c.type === 'money' ? cell(tr, i, S.TOTM, Math.round(totals[i] * 100) / 100, 'n') : cell(tr, i, S.TOTT, ''))
+  ).join('')}</row>`);
+
+  const colsXml = cols.map((c, i) =>
+    `<col min="${i + 1}" max="${i + 1}" width="${c.w}" customWidth="1"/>`).join('');
+
+  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<dimension ref="A1:${lastCol}${tr}"/>
+<sheetViews><sheetView showGridLines="0" tabSelected="1" workbookViewId="0">
+<pane ySplit="5" topLeftCell="A6" activePane="bottomLeft" state="frozen"/>
+<selection pane="bottomLeft" activeCell="A6" sqref="A6"/></sheetView></sheetViews>
+<sheetFormatPr defaultRowHeight="14.5"/>
+<cols>${colsXml}</cols>
+<sheetData>${rows.join('')}</sheetData>
+<autoFilter ref="A5:${lastCol}${5 + items.length}"/>
+<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/>
+<pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0" paperSize="9"/>
+</worksheet>`;
+
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<numFmts count="3">
+<numFmt numFmtId="164" formatCode="#,##0.00"/>
+<numFmt numFmtId="165" formatCode="dd/mm/yyyy"/>
+<numFmt numFmtId="166" formatCode="0.0%"/>
+</numFmts>
+<fonts count="6">
+<font><sz val="10"/><color rgb="FF0F262C"/><name val="Calibri"/></font>
+<font><b/><sz val="15"/><color rgb="FF0F262C"/><name val="Calibri"/></font>
+<font><sz val="11"/><color rgb="FF4C666D"/><name val="Calibri"/></font>
+<font><b/><sz val="9"/><color rgb="FFA2701A"/><name val="Calibri"/></font>
+<font><b/><sz val="9"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+<font><b/><sz val="10"/><color rgb="FF0F262C"/><name val="Calibri"/></font>
+</fonts>
+<fills count="4">
+<fill><patternFill patternType="none"/></fill>
+<fill><patternFill patternType="gray125"/></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FF0F262C"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFEDF1F0"/><bgColor indexed="64"/></patternFill></fill>
+</fills>
+<borders count="2">
+<border><left/><right/><top/><bottom/><diagonal/></border>
+<border><left style="thin"><color rgb="FFC9D8D6"/></left><right style="thin"><color rgb="FFC9D8D6"/></right><top style="thin"><color rgb="FFC9D8D6"/></top><bottom style="thin"><color rgb="FFC9D8D6"/></bottom><diagonal/></border>
+</borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="12">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="4" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
+<xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+<xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="5" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
+<xf numFmtId="164" fontId="5" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+<xf numFmtId="166" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+</cellXfs>
+</styleSheet>`;
+
+  const files = [
+    { name: '[Content_Types].xml', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>` },
+    { name: '_rels/.rels', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>` },
+    { name: 'xl/workbook.xml', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="Invoices" sheetId="1" r:id="rId1"/></sheets>
+</workbook>` },
+    { name: 'xl/_rels/workbook.xml.rels', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>` },
+    { name: 'xl/styles.xml', data: styles },
+    { name: 'xl/worksheets/sheet1.xml', data: sheet },
+  ];
+
+  saveBlob(_zipStore(files), exportFileStem() + '.xlsx');
+}
+
 
 function openCommission() {
   const sel = document.getElementById('commissionMonth');

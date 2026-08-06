@@ -2691,7 +2691,7 @@ function onTripInvToggle(cb) {
 function renderTripRouteOrder() {
   const el = document.getElementById('tripRouteOrder');
   if (tripRouteIds.length <= 1) {
-    el.innerHTML = '<div style="color:#555;font-size:12px;font-style:italic;padding:4px">Select other invoices above.</div>';
+    el.innerHTML = '<div style="color:#7f97b3;font-size:12px;font-style:italic;padding:4px">Select other invoices above.</div>';
     return;
   }
   const cache = getTransportCache();
@@ -2714,7 +2714,7 @@ function renderTripRouteOrder() {
     const missingBadge = !pinned
       ? `<span style="color:${distKm>0?'#f39c12':'#e74c3c'};font-size:10px;flex-shrink:0">⚠ no map pin</span>` : '';
     const shareBadge = share && share.amount > 0
-      ? `<span style="color:#5dfc8d;font-size:11px;font-weight:600;flex-shrink:0">${fmtRM(share.amount)}</span><span style="color:#555;font-size:10px;flex-shrink:0">(${Math.round(share.ratio*100)}%)</span>`
+      ? `<span style="color:#5dfc8d;font-size:11px;font-weight:600;flex-shrink:0">${fmtRM(share.amount)}</span><span style="color:#8fa8c4;font-size:11px;flex-shrink:0">(${Math.round(share.ratio*100)}%)</span>`
       : '';
     // ↺ resets a pin set for this trip — cached coordinates are managed in the cache manager
     const clearBtn = tripInvLocations[id]
@@ -2725,18 +2725,18 @@ function renderTripRouteOrder() {
       `<button onclick="removeTripStop('${id}')" title="Remove this stop from the trip" style="background:none;border:none;color:#e74c3c;cursor:pointer;padding:0 4px;font-size:13px;line-height:1;flex-shrink:0">✕</button>`;
 
     return `<div style="display:flex;align-items:center;gap:5px;padding:5px 2px;font-size:12px;border-bottom:1px solid ${!hasAnyLocation?'#3d1010':'#0f1e35'}">
-      <span style="color:#555;min-width:16px;text-align:right;flex-shrink:0">${idx+1}.</span>
+      <span style="color:#7f97b3;min-width:16px;text-align:right;flex-shrink:0">${idx+1}.</span>
       <span style="color:#e0e0e0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cust}${city&&!loc?` <span style="color:#f39c12;font-size:10px">(${city})</span>`:''}</span>
       ${kmBadge}${missingBadge}${shareBadge}${clearBtn}
       <button onclick="openMapPickerForTripInv('${id}')" title="${hasAnyLocation?'Update location':'⚠ Set location — needed for distance split'}" style="${locBtnStyle}">📍</button>
-      ${isCurrent ? '<span style="color:#555;font-size:10px;flex-shrink:0">this</span>' : `<button onclick="moveTripStop('${id}',-1)" style="background:none;border:none;color:#aaa;cursor:pointer;padding:0 3px;font-size:13px;flex-shrink:0">↑</button><button onclick="moveTripStop('${id}',1)" style="background:none;border:none;color:#aaa;cursor:pointer;padding:0 3px;font-size:13px;flex-shrink:0">↓</button>`}
+      ${isCurrent ? '<span style="color:#7f97b3;font-size:10px;flex-shrink:0">this</span>' : `<button onclick="moveTripStop('${id}',-1)" style="background:none;border:none;color:#aaa;cursor:pointer;padding:0 3px;font-size:13px;flex-shrink:0">↑</button><button onclick="moveTripStop('${id}',1)" style="background:none;border:none;color:#aaa;cursor:pointer;padding:0 3px;font-size:13px;flex-shrink:0">↓</button>`}
       ${removeBtn}
     </div>`;
   });
   el.innerHTML =
-    `<div style="color:#555;font-size:11px;padding:2px 4px 4px">📍 Ipoh Hydrotech</div>` +
+    `<div style="color:#7f97b3;font-size:11px;padding:2px 4px 4px">📍 Ipoh Hydrotech</div>` +
     rows.join('') +
-    `<div style="color:#555;font-size:11px;padding:4px 4px 2px">📍 Ipoh Hydrotech (return)</div>`;
+    `<div style="color:#7f97b3;font-size:11px;padding:4px 4px 2px">📍 Ipoh Hydrotech (return)</div>`;
 }
 function clearTripInvLocation(id) {
   delete tripInvLocations[id];

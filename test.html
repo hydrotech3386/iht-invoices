@@ -4300,7 +4300,7 @@ function exportFileStem() {
   return bits.join('_');
 }
 
-// Column set, trimmed to what this user is allowed to see
+// Columns shared by both exports - the same for every role
 function exportColumns() {
   const cols = [
     { t: 'Invoice No.', w: 15, get: i => i.invoiceNo || '' },
@@ -4316,15 +4316,9 @@ function exportColumns() {
     { t: 'Status',      w: 11, type: 'center', get: i => (isOverdue(i) ? 'Overdue' : computeStatus(i)).replace(/^./, c => c.toUpperCase()) },
     { t: 'Age (days)',  w: 11, type: 'int',    get: i => { const d = daysSince(i.invoiceDate); return d === null ? '' : d; } },
   ];
-  if (canViewCost()) {
-    cols.push({ t: 'Cost', w: 14, type: 'money', get: i => totalCost(i) || 0 });
-  }
-  if (session && session.role === 'management') {
-    cols.push({ t: 'Margin %', w: 11, type: 'pct', get: i => {
-      const ep = effectivePayable(i), tc = totalCost(i);
-      return (!tc || !ep) ? '' : (ep - tc) / ep * 100;
-    } });
-  }
+  // Cost and margin are deliberately excluded from every export, for every
+  // role. Exported files get forwarded and printed, so internal margin must
+  // not leave the app in a document nobody can recall.
   return cols;
 }
 
@@ -4344,6 +4338,7 @@ function saveBlob(blob, filename) {
 function exportListPDF() {
   const items = getFilteredInvoices();
   if (!items.length) { alert('Nothing to export — no invoices match the current filters.'); return; }
+  const fileName = exportFileStem();
   const cols = exportColumns();
   const esc = s => String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -4374,7 +4369,7 @@ function exportListPDF() {
   ).join('');
 
   const doc = `<!doctype html><html><head><meta charset="utf-8">
-<title>${esc(exportFileStem())}</title>
+<title>${esc(fileName)}</title>
 <style>
   @page { size: A4 landscape; margin: 12mm 10mm 14mm; }
   * { box-sizing: border-box; }
@@ -4426,8 +4421,15 @@ function exportListPDF() {
   if (!w) { alert('Please allow pop-ups for this site to export a PDF.'); return; }
   w.document.write(doc);
   w.document.close();
+  // The "Save as PDF" dialog takes its default filename from the document
+  // title. Some browsers ignore a <title> that arrived via document.write,
+  // so set it on the document object as well - before and after focus.
+  try { w.document.title = fileName; } catch (e) {}
   w.focus();
-  setTimeout(() => { try { w.print(); } catch (e) {} }, 400);
+  setTimeout(() => {
+    try { w.document.title = fileName; } catch (e) {}
+    try { w.print(); } catch (e) {}
+  }, 400);
 }
 
 function fmtNum(v) {

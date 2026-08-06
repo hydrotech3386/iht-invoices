@@ -756,7 +756,22 @@
   </div>
 </div>
 
-<div class="modal-bg" id="mapPickerBg" style="z-index:10000">
+<!-- Saved Sites Modal -->
+<div class="modal-bg" id="sitesManagerBg" style="z-index:9500">
+  <div class="modal" style="max-width:560px;padding:0;overflow:hidden">
+    <div style="padding:12px 16px;border-bottom:1px solid #1a3a6a;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-weight:700;font-size:15px;color:#fff">🏗 Saved Delivery Sites</div>
+      <button onclick="closeSitesManager()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:20px;line-height:1">✕</button>
+    </div>
+    <div style="padding:8px 14px 4px;font-size:11px;color:#888">Sites are saved automatically when you add a site delivery to cost items. Any customer can be delivered to any site.</div>
+    <div id="sitesManagerList" style="max-height:340px;overflow-y:auto;padding:6px 14px 14px"></div>
+    <div style="padding:8px 16px 10px;border-top:1px solid #1a3a6a;display:flex;justify-content:flex-end;align-items:center">
+      <button class="btn-cancel" onclick="closeSitesManager()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="mapPickerBg" style="z-index:10000"
   <div class="modal" style="max-width:620px;padding:0;overflow:hidden">
     <div style="padding:12px 16px;border-bottom:1px solid #1a3a6a;display:flex;justify-content:space-between;align-items:center">
       <div>
@@ -847,10 +862,18 @@
       </div>
       <span id="destHint" style="font-size:10px;color:#7f97b3"></span>
     </div>
-    <div id="siteAddrRow" style="display:none;gap:6px;margin-bottom:8px">
-      <input type="text" id="fSiteAddress" placeholder="Site name, address, or pasted Google Maps coordinates…"
-        style="flex:1;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px;box-sizing:border-box">
-      <button class="btn-re" style="padding:7px 10px;font-size:12px;white-space:nowrap;flex-shrink:0" onclick="openMapPickerForSite()">📍 Map</button>
+    <div id="siteAddrRow" style="display:none;flex-direction:column;gap:6px;margin-bottom:8px">
+      <div style="display:flex;gap:6px">
+        <input type="text" id="fSiteAddress" list="siteSuggestions" oninput="onSiteInputChange()"
+          placeholder="Site name — pick a saved site, or type a new one…"
+          style="flex:1;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px;box-sizing:border-box">
+        <datalist id="siteSuggestions"></datalist>
+        <button class="btn-re" style="padding:7px 10px;font-size:12px;white-space:nowrap;flex-shrink:0" onclick="openMapPickerForSite()">📍 Map</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span id="siteMatchHint" style="font-size:10px;color:#7f97b3"></span>
+        <button onclick="openSitesManager()" style="background:none;border:none;color:#4fc3f7;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;flex-shrink:0">Saved Sites</button>
+      </div>
     </div>
     <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:8px">
       <div style="flex:1">
@@ -1653,6 +1676,10 @@ function onLoggedIn() {
       // Sync transport cache from Firebase → localStorage
       if (appSettings.transportCache) {
         localStorage.setItem(TRANSPORT_CACHE_KEY, JSON.stringify(appSettings.transportCache));
+      }
+      // Sync saved delivery sites from Firebase → localStorage
+      if (appSettings.sites) {
+        localStorage.setItem(SITES_KEY, JSON.stringify(appSettings.sites));
       }
     }
   });
@@ -3036,6 +3063,140 @@ let currentCostCustomer = '';
 // can be cached alongside the km and reused for multi-stop route calculation.
 let currentTransportCoords = null;
 
+// ---- Saved delivery sites ----
+// Keyed by lower-cased site name. A site is independent of any customer —
+// several customers can be delivered to the same site.
+const SITES_KEY = 'iht_sites';
+function getSites() {
+  try { return JSON.parse(localStorage.getItem(SITES_KEY) || '{}'); } catch(e) { return {}; }
+}
+function saveSites(sites) {
+  localStorage.setItem(SITES_KEY, JSON.stringify(sites));
+  syncSettingToFirebase('sites', sites);
+}
+function populateSiteSuggestions() {
+  const dl = document.getElementById('siteSuggestions');
+  if (!dl) return;
+  const sites = getSites();
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  dl.innerHTML = Object.keys(sites).sort().map(k => {
+    const s = sites[k];
+    return `<option value="${esc(s.name || k)}" label="${s.km ? s.km + ' km' : ''}">`;
+  }).join('');
+}
+// Typing or picking a saved site name loads its location and distance
+function onSiteInputChange() {
+  const val = (document.getElementById('fSiteAddress').value || '').trim();
+  const hintEl = document.getElementById('siteMatchHint');
+  if (!val) { if (hintEl) hintEl.textContent = ''; return; }
+  const s = getSites()[val.toLowerCase()];
+  if (!s || typeof s.lat !== 'number') {
+    if (hintEl) hintEl.textContent = 'New site — use 🔍 Find or 📍 Map to locate it.';
+    return;
+  }
+  currentSiteLoc = { lat: s.lat, lng: s.lng, label: s.name || val, km: s.km || 0 };
+  if (s.km) document.getElementById('fTransportKm').value = s.km;
+  if (hintEl) hintEl.textContent = `✓ Saved site — ${s.km || '?'} km one-way`;
+  document.getElementById('destHint').textContent = `Site set: ${s.name || val}`;
+  updateTransportCalc();
+}
+// Remember a located site so the next delivery there needs no lookup
+function rememberSite(label, loc, km) {
+  if (!label || !loc || typeof loc.lat !== 'number') return;
+  const sites = getSites();
+  const key = label.toLowerCase().trim();
+  const prev = sites[key] || {};
+  sites[key] = { name: label.trim(), lat: loc.lat, lng: loc.lng,
+                 km: km || prev.km || 0, savedAt: Date.now() };
+  saveSites(sites);
+  populateSiteSuggestions();
+}
+
+function openSitesManager() { renderSitesManagerList(); document.getElementById('sitesManagerBg').classList.add('open'); }
+function closeSitesManager() { document.getElementById('sitesManagerBg').classList.remove('open'); }
+function renderSitesManagerList() {
+  const sites = getSites();
+  const keys = Object.keys(sites).sort();
+  const el = document.getElementById('sitesManagerList');
+  if (!keys.length) {
+    el.innerHTML = '<div style="color:#7f97b3;font-size:13px;text-align:center;padding:20px">No saved sites yet.<br><span style="font-size:11px">Add a site delivery to cost items and it will be saved here.</span></div>';
+    return;
+  }
+  el.innerHTML = keys.map((k, idx) => {
+    const s = sites[k];
+    const eid = `sm${idx}`;
+    const dateStr = s.savedAt ? new Date(s.savedAt).toLocaleDateString('en-MY') : '—';
+    return `<div style="border:1px solid #1a3a6a;border-radius:6px;padding:10px 12px;margin-bottom:8px;background:#071628">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;color:#4fc3f7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🏗 ${String(s.name||k).replace(/</g,'&lt;')}</div>
+          <div id="${eid}-view" style="margin-top:5px;display:flex;gap:12px;flex-wrap:wrap">
+            <span style="font-size:12px;color:#5dfc8d">${s.km||'—'} km one-way</span>
+            <span style="font-size:11px;color:#5dfc8d">🗺 ${typeof s.lat==='number' ? s.lat.toFixed(4)+', '+s.lng.toFixed(4) : 'no pin'}</span>
+            <span style="font-size:11px;color:#7f97b3">${dateStr}</span>
+          </div>
+          <div id="${eid}-edit" style="display:none;margin-top:8px">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div>
+                <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">Site name</label>
+                <input id="${eid}-name" value="${String(s.name||k).replace(/"/g,'&quot;')}" style="width:180px;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px">
+              </div>
+              <div>
+                <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">One-way km</label>
+                <input id="${eid}-km" type="number" min="0" value="${s.km||''}" style="width:80px;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px">
+              </div>
+              <button data-saction="save" data-key="${encodeURIComponent(k)}" data-eid="${eid}" style="background:#1a6a3a;border:none;border-radius:4px;color:#fff;padding:5px 12px;font-size:12px;cursor:pointer">Save</button>
+              <button data-saction="cancel" data-eid="${eid}" style="background:none;border:1px solid #555;border-radius:4px;color:#aaa;padding:5px 10px;font-size:12px;cursor:pointer">Cancel</button>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button data-saction="edit" data-eid="${eid}" style="background:none;border:1px solid #1a3a6a;border-radius:4px;color:#4fc3f7;padding:4px 10px;font-size:11px;cursor:pointer">Edit</button>
+          <button data-saction="delete" data-key="${encodeURIComponent(k)}" style="background:none;border:1px solid #e74c3c;border-radius:4px;color:#e74c3c;padding:4px 10px;font-size:11px;cursor:pointer">Delete</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  el.onclick = ev => {
+    const btn = ev.target.closest('[data-saction]');
+    if (!btn) return;
+    const action = btn.dataset.saction;
+    const eid = btn.dataset.eid;
+    const key = btn.dataset.key ? decodeURIComponent(btn.dataset.key) : null;
+    if (action === 'edit') {
+      document.getElementById(`${eid}-view`).style.display = 'none';
+      document.getElementById(`${eid}-edit`).style.display = 'block';
+    } else if (action === 'cancel') {
+      document.getElementById(`${eid}-view`).style.display = 'flex';
+      document.getElementById(`${eid}-edit`).style.display = 'none';
+    } else if (action === 'save') {
+      const all = getSites();
+      const entry = all[key];
+      if (entry) {
+        const newName = document.getElementById(`${eid}-name`).value.trim() || entry.name;
+        const newKm = parseFloat(document.getElementById(`${eid}-km`).value);
+        entry.name = newName;
+        if (!isNaN(newKm) && newKm >= 0) entry.km = newKm;
+        // Renaming moves the entry to its new key
+        const newKey = newName.toLowerCase();
+        if (newKey !== key) { delete all[key]; all[newKey] = entry; }
+        else all[key] = entry;
+        saveSites(all);
+      }
+      renderSitesManagerList();
+      populateSiteSuggestions();
+    } else if (action === 'delete') {
+      if (!confirm(`Delete saved site:\n"${key}"?\n\nInvoices already costed keep their own copy of the location.`)) return;
+      const all = getSites();
+      delete all[key];
+      saveSites(all);
+      renderSitesManagerList();
+      populateSiteSuggestions();
+    }
+  };
+}
+
 // Delivery destination for the invoice open in the cost modal.
 // 'office' uses the customer's cached location; 'site' uses a per-invoice
 // location that is stored on the invoice and never written to the customer cache.
@@ -3227,6 +3388,9 @@ function initTransportCalc(customerName) {
     ? Object.assign({}, inv.siteLocation) : null;
   const siteInput = document.getElementById('fSiteAddress');
   if (siteInput) siteInput.value = currentSiteLoc ? (currentSiteLoc.label || '') : '';
+  populateSiteSuggestions();
+  const smh = document.getElementById('siteMatchHint');
+  if (smh) smh.textContent = '';
 
   if (cached) {
     cacheEl.textContent = `✓ Cached: ${cached.city}, ${cached.km} km` +
@@ -3425,12 +3589,14 @@ function addTransportToCost() {
   _updateCostTotal();
 
   if (isSite) {
-    // A site belongs to this delivery, not the customer — keep it off the cache
+    // A site belongs to this delivery, not the customer — keep it off the customer cache
     const label = (document.getElementById('fSiteAddress').value || '').trim() ||
                   (currentSiteLoc && currentSiteLoc.label) || 'Site';
     currentSiteLoc = Object.assign({}, currentSiteLoc || {}, { km, label });
+    // ...but do remember the site itself, so the next delivery there is one click
+    rememberSite(label, currentSiteLoc, km);
     document.getElementById('transportCityHint').textContent =
-      `✓ Transport to site added — ${label}, ${km} km. Saved with this invoice.`;
+      `✓ Transport to site added — ${label}, ${km} km. Site saved for reuse.`;
     return;
   }
 

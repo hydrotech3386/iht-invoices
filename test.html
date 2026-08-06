@@ -837,6 +837,21 @@
       <button onclick="openCacheManager()" style="background:none;border:none;color:#4fc3f7;font-size:11px;cursor:pointer;padding:0;text-decoration:underline">Manage Cache</button>
     </div>
     <div id="transportCacheInfo" style="font-size:11px;color:#5dfc8d;margin-bottom:8px;display:none"></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+      <span style="font-size:11px;color:#aaa;flex-shrink:0">Deliver to</span>
+      <div style="display:flex;border:1px solid #1a3a6a;border-radius:5px;overflow:hidden;flex-shrink:0">
+        <button type="button" id="destOfficeBtn" onclick="setDeliverTo('office')"
+          style="background:#0f3460;border:none;color:#fff;padding:6px 12px;font-size:12px;cursor:pointer">🏢 Customer</button>
+        <button type="button" id="destSiteBtn" onclick="setDeliverTo('site')"
+          style="background:#0a1628;border:none;border-left:1px solid #1a3a6a;color:#7f97b3;padding:6px 12px;font-size:12px;cursor:pointer">🏗 Site</button>
+      </div>
+      <span id="destHint" style="font-size:10px;color:#7f97b3"></span>
+    </div>
+    <div id="siteAddrRow" style="display:none;gap:6px;margin-bottom:8px">
+      <input type="text" id="fSiteAddress" placeholder="Site name, address, or pasted Google Maps coordinates…"
+        style="flex:1;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px;box-sizing:border-box">
+      <button class="btn-re" style="padding:7px 10px;font-size:12px;white-space:nowrap;flex-shrink:0" onclick="openMapPickerForSite()">📍 Map</button>
+    </div>
     <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:8px">
       <div style="flex:1">
         <label style="font-size:11px;color:#aaa;display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
@@ -2609,6 +2624,12 @@ function closeCostModal() {
   document.getElementById('transportCityHint').textContent = '';
   document.getElementById('transportCacheInfo').style.display = 'none';
   document.getElementById('transportCalcAmt').textContent = 'RM 0.00';
+  // Clear the destination so it cannot leak into the next invoice opened
+  currentDeliverTo = 'office';
+  currentSiteLoc = null;
+  currentTransportCoords = null;
+  document.getElementById('fSiteAddress').value = '';
+  document.getElementById('destHint').textContent = '';
   costModalId = null;
 }
 let tripRouteIds = []; // ordered list of invoice IDs in route
@@ -2634,7 +2655,10 @@ function populateTripInvoiceList() {
   list.innerHTML = all.map(inv => {
     const isCurrent = inv.id === costModalId;
     const cache = getTransportCache()[(inv.customer||'').toLowerCase().trim()];
-    const cityHint = cache ? `<span style="color:#5dfc8d;font-size:10px">${cache.city}</span>` : `<span style="color:#555;font-size:10px">no cache</span>`;
+    const cityHint = inv.deliverTo === 'site'
+      ? `<span style="color:#4fc3f7;font-size:10px">🏗 ${inv.siteLocation && inv.siteLocation.label ? String(inv.siteLocation.label).slice(0,18) : 'site'}</span>`
+      : (cache ? `<span style="color:#5dfc8d;font-size:10px">${cache.city}</span>`
+               : `<span style="color:#7f97b3;font-size:10px">no cache</span>`);
     // Searchable haystack: invoice no. + customer + cached city
     const hay = `${inv.invoiceNo||''} ${inv.customer||''} ${cache ? cache.city||'' : ''}`.toLowerCase();
     return `<label class="trip-inv-row" data-hay="${hay.replace(/"/g,'&quot;')}" style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-bottom:1px solid #0f1e35;font-size:12px">
@@ -2700,11 +2724,16 @@ function renderTripRouteOrder() {
     const cust = inv ? (inv.customer||'—') : '—';
     const city = cache[(cust).toLowerCase().trim()]?.city || '';
     const isCurrent = id === costModalId;
-    const loc = getStopLocation(id);   // map pin for this trip, or coordinates from cache
+    const loc = getStopLocation(id);   // trip pin, site location, or customer cache
     const pinned = !!loc;              // has real coordinates → routable
+    const isSite = isSiteDelivery(id);
+    const siteTag = isSite
+      ? ` <span style="color:#4fc3f7;font-size:10px" title="${loc && loc.label ? String(loc.label).replace(/"/g,'&quot;') : 'Site delivery'}">🏗 site</span>`
+      : '';
     const share = tripInvShares[id];
 
-    const distKm = loc ? loc.km : (cache[(cust).toLowerCase().trim()]?.km || 0);
+    // A site delivery never falls back to the customer's cached distance
+    const distKm = loc ? loc.km : (isSite ? 0 : (cache[(cust).toLowerCase().trim()]?.km || 0));
     const hasAnyLocation = pinned || distKm > 0;
     // Pin button: green=coordinates known, orange=km only (can't route), red=nothing
     const pinColor = pinned ? '#5dfc8d' : (distKm > 0 ? '#f39c12' : '#e74c3c');
@@ -2726,7 +2755,7 @@ function renderTripRouteOrder() {
 
     return `<div style="display:flex;align-items:center;gap:5px;padding:5px 2px;font-size:12px;border-bottom:1px solid ${!hasAnyLocation?'#3d1010':'#0f1e35'}">
       <span style="color:#7f97b3;min-width:16px;text-align:right;flex-shrink:0">${idx+1}.</span>
-      <span style="color:#e0e0e0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cust}${city&&!loc?` <span style="color:#f39c12;font-size:10px">(${city})</span>`:''}</span>
+      <span style="color:#e0e0e0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cust}${siteTag}${city&&!loc?` <span style="color:#f39c12;font-size:10px">(${city})</span>`:''}</span>
       ${kmBadge}${missingBadge}${shareBadge}${clearBtn}
       <button onclick="openMapPickerForTripInv('${id}')" title="${hasAnyLocation?'Update location':'⚠ Set location — needed for distance split'}" style="${locBtnStyle}">📍</button>
       ${isCurrent ? '<span style="color:#7f97b3;font-size:10px;flex-shrink:0">this</span>' : `<button onclick="moveTripStop('${id}',-1)" style="background:none;border:none;color:#aaa;cursor:pointer;padding:0 3px;font-size:13px;flex-shrink:0">↑</button><button onclick="moveTripStop('${id}',1)" style="background:none;border:none;color:#aaa;cursor:pointer;padding:0 3px;font-size:13px;flex-shrink:0">↓</button>`}
@@ -2776,7 +2805,11 @@ function updateTripShare() {
     const stopKms = checkedIds.map(id => {
       const loc = tripInvLocations[id];
       if (loc && loc.km > 0) return { id, km: loc.km };
-      // Fallback: use cached km from transport cache
+      // getStopLocation resolves site deliveries to their own distance and keeps
+      // the customer cache out of it; fall back to the cache only for office stops.
+      const resolved = getStopLocation(id);
+      if (resolved && resolved.km > 0) return { id, km: resolved.km };
+      if (isSiteDelivery(id)) return { id, km: 0 };
       const inv = state.invoices.find(i => i.id === id);
       const cachedKm = inv ? (cache[(inv.customer||'').toLowerCase().trim()]?.km || 0) : 0;
       return { id, km: cachedKm };
@@ -2819,11 +2852,34 @@ function getStopLocation(invId) {
   if (tripInvLocations[invId]) return tripInvLocations[invId];
   const inv = state.invoices.find(i => i.id === invId);
   if (!inv) return null;
+
+  // The invoice open in the cost modal may have unsaved site changes
+  if (invId === costModalId && currentDeliverTo === 'site') {
+    return (currentSiteLoc && typeof currentSiteLoc.lat === 'number')
+      ? { lat: currentSiteLoc.lat, lng: currentSiteLoc.lng,
+          label: currentSiteLoc.label || 'Site', km: currentSiteLoc.km || 0, isSite: true }
+      : null;   // site delivery with no location yet — must be pinned, not guessed
+  }
+  // A saved site delivery goes to its own location, not the customer's
+  if (inv.deliverTo === 'site') {
+    const sl = inv.siteLocation;
+    return (sl && typeof sl.lat === 'number')
+      ? { lat: sl.lat, lng: sl.lng, label: sl.label || 'Site', km: sl.km || 0, isSite: true }
+      : null;
+  }
+
   const e = getTransportCache()[(inv.customer || '').toLowerCase().trim()];
   if (e && typeof e.lat === 'number' && typeof e.lng === 'number') {
     return { lat: e.lat, lng: e.lng, label: e.city || inv.customer, km: e.km || 0, fromCache: true };
   }
   return null;
+}
+// True when this invoice is a site delivery — used to keep the customer cache
+// out of its distance and to flag it in the trip list.
+function isSiteDelivery(invId) {
+  if (invId === costModalId) return currentDeliverTo === 'site';
+  const inv = state.invoices.find(i => i.id === invId);
+  return !!(inv && inv.deliverTo === 'site');
 }
 
 async function calculateRouteDistance() {
@@ -2841,6 +2897,11 @@ async function calculateRouteDistance() {
       const inv = state.invoices.find(x => x.id === tripRouteIds[i]);
       const cust = inv && inv.customer;
       if (!cust) { autoFailed.push(inv ? inv.invoiceNo : tripRouteIds[i]); continue; }
+      // A site delivery cannot be looked up from the customer name — it has to be pinned
+      if (isSiteDelivery(tripRouteIds[i])) {
+        autoFailed.push(`${cust} — site delivery, needs its own pin`);
+        continue;
+      }
       hint.textContent = `Finding ${cust}…`;
       const r = await resolveCustomerLocation(cust, m => { hint.textContent = `${cust}: ${m}`; });
       if (!r) { autoFailed.push(cust + (lastAiError ? ` — ${lastAiError}` : '')); continue; }
@@ -2974,6 +3035,43 @@ let currentCostCustomer = '';
 // Coordinates of the location found/picked for the current customer, so they
 // can be cached alongside the km and reused for multi-stop route calculation.
 let currentTransportCoords = null;
+
+// Delivery destination for the invoice open in the cost modal.
+// 'office' uses the customer's cached location; 'site' uses a per-invoice
+// location that is stored on the invoice and never written to the customer cache.
+let currentDeliverTo = 'office';
+let currentSiteLoc = null;              // { lat, lng, label, km }
+
+function setDeliverTo(mode, opts) {
+  opts = opts || {};
+  currentDeliverTo = (mode === 'site') ? 'site' : 'office';
+  const isSite = currentDeliverTo === 'site';
+  const offBtn = document.getElementById('destOfficeBtn');
+  const siteBtn = document.getElementById('destSiteBtn');
+  if (offBtn)  { offBtn.style.background  = isSite ? '#0a1628' : '#0f3460'; offBtn.style.color  = isSite ? '#7f97b3' : '#fff'; }
+  if (siteBtn) { siteBtn.style.background = isSite ? '#0f3460' : '#0a1628'; siteBtn.style.color = isSite ? '#fff' : '#7f97b3'; }
+  const row = document.getElementById('siteAddrRow');
+  if (row) row.style.display = isSite ? 'flex' : 'none';
+
+  const kmEl = document.getElementById('fTransportKm');
+  const hint = document.getElementById('destHint');
+  if (!opts.keepKm) {
+    if (isSite) {
+      kmEl.value = (currentSiteLoc && currentSiteLoc.km) ? currentSiteLoc.km : '';
+    } else {
+      const cached = getTransportCache()[(currentCostCustomer || '').toLowerCase().trim()];
+      kmEl.value = cached ? cached.km : '';
+      currentTransportCoords = (cached && typeof cached.lat === 'number')
+        ? { lat: cached.lat, lng: cached.lng } : null;
+    }
+  }
+  if (hint) {
+    hint.textContent = isSite
+      ? (currentSiteLoc ? `Site set: ${currentSiteLoc.label || 'pinned'}` : 'Enter or pin the site location')
+      : 'Uses the customer’s saved location';
+  }
+  updateTransportCalc();
+}
 function getTransportCache() {
   try { return JSON.parse(localStorage.getItem(TRANSPORT_CACHE_KEY) || '{}'); } catch(e) { return {}; }
 }
@@ -3122,18 +3220,25 @@ function initTransportCalc(customerName) {
   populateVehicleDropdowns();
   currentTransportCoords = (cached && typeof cached.lat === 'number')
     ? { lat: cached.lat, lng: cached.lng } : null;
+
+  // Restore this invoice's saved delivery destination
+  const inv = state.invoices.find(i => i.id === costModalId);
+  currentSiteLoc = (inv && inv.siteLocation && typeof inv.siteLocation.lat === 'number')
+    ? Object.assign({}, inv.siteLocation) : null;
+  const siteInput = document.getElementById('fSiteAddress');
+  if (siteInput) siteInput.value = currentSiteLoc ? (currentSiteLoc.label || '') : '';
+
   if (cached) {
-    kmEl.value = cached.km;
     cacheEl.textContent = `✓ Cached: ${cached.city}, ${cached.km} km` +
       (currentTransportCoords ? ' · 📍 pinned' : ' · no map pin yet');
     cacheEl.style.display = 'block';
     hintEl.textContent = '';
   } else {
-    kmEl.value = '';
     cacheEl.style.display = 'none';
     hintEl.textContent = 'No cached distance — click 🔍 Find, use 📍 Map, or enter km manually.';
   }
-  updateTransportCalc();
+  // setDeliverTo fills the km field from the right source and updates the total
+  setDeliverTo((inv && inv.deliverTo === 'site') ? 'site' : 'office');
 }
 function updateTransportCalc() {
   const km = parseFloat(document.getElementById('fTransportKm').value) || 0;
@@ -3261,13 +3366,31 @@ async function lookupDistance() {
   const hintEl = document.getElementById('transportCityHint');
   btn.textContent = '⏳'; btn.disabled = true;
 
+  // Site deliveries search the site address; office deliveries search the customer
+  const isSite = currentDeliverTo === 'site';
+  const query = isSite ? (document.getElementById('fSiteAddress').value || '').trim() : currentCostCustomer;
+  if (isSite && !query) {
+    hintEl.textContent = 'Enter a site name or address first, or use 📍 Map to pin it.';
+    btn.textContent = '🔍 Find'; btn.disabled = false;
+    return;
+  }
+
   hintEl.textContent = 'Searching…';
-  const found = await resolveCustomerLocation(currentCostCustomer, m => { hintEl.textContent = m; });
+  // A pasted coordinate pair resolves instantly, no lookup needed
+  const pasted = isSite ? parseLatLngInput(query) : null;
+  const found = pasted
+    ? { lat: pasted.lat, lng: pasted.lng, label: `${pasted.lat.toFixed(5)}, ${pasted.lng.toFixed(5)}`, source: '📍 Coordinates' }
+    : await resolveCustomerLocation(query, m => { hintEl.textContent = m; });
   if (found) {
     const km = await officeRoadKm(found.lat, found.lng);
     if (km !== null) {
-      currentTransportCoords = { lat: found.lat, lng: found.lng };
       document.getElementById('fTransportKm').value = km;
+      if (isSite) {
+        currentSiteLoc = { lat: found.lat, lng: found.lng, label: found.label, km };
+        document.getElementById('destHint').textContent = `Site set: ${found.label}`;
+      } else {
+        currentTransportCoords = { lat: found.lat, lng: found.lng };
+      }
       hintEl.textContent = `${found.source}: ${found.label} — ${km} km one-way` +
         (found.approx ? ' (city centre — check with 📍 Map)' : '') + '. Click "+ Add to Items" to save.';
       updateTransportCalc();
@@ -3297,9 +3420,21 @@ function addTransportToCost() {
     if (!confirm(`Existing transport entry found (RM ${oldAmt}).\nReplace with new amount (${fmtRM(amt)})?`)) return;
     existingRow.remove();
   }
-  _addCostItemRow('Transport', amt);
+  const isSite = currentDeliverTo === 'site';
+  _addCostItemRow(isSite ? 'Transport (Site)' : 'Transport', amt);
   _updateCostTotal();
-  // Cache confirmed distance
+
+  if (isSite) {
+    // A site belongs to this delivery, not the customer — keep it off the cache
+    const label = (document.getElementById('fSiteAddress').value || '').trim() ||
+                  (currentSiteLoc && currentSiteLoc.label) || 'Site';
+    currentSiteLoc = Object.assign({}, currentSiteLoc || {}, { km, label });
+    document.getElementById('transportCityHint').textContent =
+      `✓ Transport to site added — ${label}, ${km} km. Saved with this invoice.`;
+    return;
+  }
+
+  // Office delivery — cache the confirmed distance against the customer
   const hint = document.getElementById('transportCityHint').textContent;
   const cityMatch = hint.match(/(?:Found|found city):\s*([^—\n]+?)(?:\s*—|\s*,\s*\d)/);
   const city = cityMatch ? cityMatch[1].trim() : currentCostCustomer;
@@ -3654,6 +3789,17 @@ function confirmMapLocation() {
       saveTransportCache(cache);
     }
     renderTripRouteOrder();
+  } else if (mapPickerTarget === 'site') {
+    const label = mapPickerPlaceLabel ||
+                  (document.getElementById('fSiteAddress').value || '').trim() ||
+                  `${mapPickerLat.toFixed(5)}, ${mapPickerLng.toFixed(5)}`;
+    currentSiteLoc = { lat: mapPickerLat, lng: mapPickerLng, label, km: mapPickerKm };
+    document.getElementById('fSiteAddress').value = label;
+    document.getElementById('fTransportKm').value = mapPickerKm;
+    document.getElementById('destHint').textContent = `Site set: ${label}`;
+    document.getElementById('transportCityHint').textContent =
+      `📍 Site location set — ~${mapPickerKm} km one-way. Click "+ Add to Items" to save.`;
+    updateTransportCalc();
   } else if (mapPickerTarget === 'cache') {
     document.getElementById('cacheNewKm').value = mapPickerKm;
     cacheNewCoords = { lat: mapPickerLat, lng: mapPickerLng };
@@ -3666,6 +3812,22 @@ function confirmMapLocation() {
     }
   }
   closeMapPicker();
+}
+
+// Map picker for a site delivery — seeded with whatever site text is typed.
+function openMapPickerForSite() {
+  const typed = (document.getElementById('fSiteAddress').value || '').trim();
+  openMapPicker('site');
+  document.getElementById('mapPickerTitle').textContent = '🏗 Set Site Location';
+  setTimeout(() => {
+    if (currentSiteLoc && typeof currentSiteLoc.lat === 'number') {
+      if (mapPicker) mapPicker.setView([currentSiteLoc.lat, currentSiteLoc.lng], 15);
+      onMapPickerClick(currentSiteLoc.lat, currentSiteLoc.lng, currentSiteLoc.label);
+    } else if (typed) {
+      document.getElementById('mapSearchInput').value = typed;
+      doMapSearch();
+    }
+  }, 300);
 }
 
 // Map picker launched from the cache manager's "Add New Entry" row.
@@ -3855,6 +4017,10 @@ function saveCostModal() {
       }
     }
   }
+
+  // Delivery destination lives on the invoice — a site is per-delivery, not per-customer
+  inv.deliverTo = currentDeliverTo;
+  if (currentSiteLoc && typeof currentSiteLoc.lat === 'number') inv.siteLocation = currentSiteLoc;
 
   inv.costItems = items;
   inv.cost = items.reduce((s, i) => s + i.amount, 0);

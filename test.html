@@ -2716,10 +2716,13 @@ function renderTripRouteOrder() {
     const shareBadge = share && share.amount > 0
       ? `<span style="color:#5dfc8d;font-size:11px;font-weight:600;flex-shrink:0">${fmtRM(share.amount)}</span><span style="color:#555;font-size:10px;flex-shrink:0">(${Math.round(share.ratio*100)}%)</span>`
       : '';
-    // ✕ only clears a pin set for this trip — cached coordinates are managed in the cache manager
+    // ↺ resets a pin set for this trip — cached coordinates are managed in the cache manager
     const clearBtn = tripInvLocations[id]
-      ? `<button onclick="clearTripInvLocation('${id}')" title="Clear custom location" style="background:none;border:none;color:#e74c3c;cursor:pointer;padding:0 2px;font-size:11px;flex-shrink:0">✕</button>`
+      ? `<button onclick="clearTripInvLocation('${id}')" title="Reset location back to the cached one" style="background:none;border:none;color:#f39c12;cursor:pointer;padding:0 2px;font-size:12px;flex-shrink:0">↺</button>`
       : '';
+    // ✕ takes the stop off the trip entirely; the invoice being edited always stays
+    const removeBtn = isCurrent ? '' :
+      `<button onclick="removeTripStop('${id}')" title="Remove this stop from the trip" style="background:none;border:none;color:#e74c3c;cursor:pointer;padding:0 4px;font-size:13px;line-height:1;flex-shrink:0">✕</button>`;
 
     return `<div style="display:flex;align-items:center;gap:5px;padding:5px 2px;font-size:12px;border-bottom:1px solid ${!hasAnyLocation?'#3d1010':'#0f1e35'}">
       <span style="color:#555;min-width:16px;text-align:right;flex-shrink:0">${idx+1}.</span>
@@ -2727,6 +2730,7 @@ function renderTripRouteOrder() {
       ${kmBadge}${missingBadge}${shareBadge}${clearBtn}
       <button onclick="openMapPickerForTripInv('${id}')" title="${hasAnyLocation?'Update location':'⚠ Set location — needed for distance split'}" style="${locBtnStyle}">📍</button>
       ${isCurrent ? '<span style="color:#555;font-size:10px;flex-shrink:0">this</span>' : `<button onclick="moveTripStop('${id}',-1)" style="background:none;border:none;color:#aaa;cursor:pointer;padding:0 3px;font-size:13px;flex-shrink:0">↑</button><button onclick="moveTripStop('${id}',1)" style="background:none;border:none;color:#aaa;cursor:pointer;padding:0 3px;font-size:13px;flex-shrink:0">↓</button>`}
+      ${removeBtn}
     </div>`;
   });
   el.innerHTML =
@@ -2737,6 +2741,18 @@ function renderTripRouteOrder() {
 function clearTripInvLocation(id) {
   delete tripInvLocations[id];
   renderTripRouteOrder();
+}
+// Take a stop off the trip: drop it from the route, untick it in the list above,
+// and forget any pin set for it. The invoice being edited can never be removed.
+function removeTripStop(id) {
+  if (id === costModalId) return;
+  tripRouteIds = tripRouteIds.filter(x => x !== id);
+  delete tripInvLocations[id];
+  delete tripInvShares[id];
+  const cb = document.querySelector('.trip-inv-cb[data-id="' + id + '"]');
+  if (cb) cb.checked = false;
+  filterTripInvoiceList();
+  updateTripShare();   // recalculates the remaining shares and re-renders the route
 }
 function moveTripStop(id, dir) {
   const idx = tripRouteIds.indexOf(id);

@@ -867,7 +867,16 @@
       </label>
     </div>
     <div id="tripSection" style="display:none">
-      <div style="font-size:12px;color:#aaa;margin-bottom:6px">Select invoices on this trip:</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-size:12px;color:#aaa;flex-shrink:0">Select invoices on this trip:</span>
+        <span id="tripSelCount" style="font-size:11px;color:#5dfc8d;flex-shrink:0"></span>
+      </div>
+      <div style="position:relative;margin-bottom:6px">
+        <input type="text" id="tripInvSearch" placeholder="Search invoice no. or customer…" oninput="filterTripInvoiceList()"
+          style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:6px 26px 6px 10px;font-size:12px;outline:none;box-sizing:border-box">
+        <button type="button" onclick="clearTripInvSearch()" title="Clear search"
+          style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:#666;cursor:pointer;font-size:14px;line-height:1;padding:2px 4px">✕</button>
+      </div>
       <div id="tripInvoiceList" style="max-height:160px;overflow-y:auto;border:1px solid #1a3a6a;border-radius:6px;padding:4px;margin-bottom:10px"></div>
       <div style="font-size:12px;color:#aaa;margin-bottom:6px">Delivery order (Ipoh → ... → Ipoh):</div>
       <div id="tripRouteOrder" style="border:1px solid #1a3a6a;border-radius:6px;padding:6px;margin-bottom:10px;min-height:40px">
@@ -2626,20 +2635,56 @@ function populateTripInvoiceList() {
     const isCurrent = inv.id === costModalId;
     const cache = getTransportCache()[(inv.customer||'').toLowerCase().trim()];
     const cityHint = cache ? `<span style="color:#5dfc8d;font-size:10px">${cache.city}</span>` : `<span style="color:#555;font-size:10px">no cache</span>`;
-    return `<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-bottom:1px solid #0f1e35;font-size:12px">
+    // Searchable haystack: invoice no. + customer + cached city
+    const hay = `${inv.invoiceNo||''} ${inv.customer||''} ${cache ? cache.city||'' : ''}`.toLowerCase();
+    return `<label class="trip-inv-row" data-hay="${hay.replace(/"/g,'&quot;')}" style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-bottom:1px solid #0f1e35;font-size:12px">
       <input type="checkbox" class="trip-inv-cb" data-id="${inv.id}" ${isCurrent?'checked disabled':''} onchange="onTripInvToggle(this)" style="flex-shrink:0;cursor:pointer">
       <span style="color:#4fc3f7;min-width:70px;flex-shrink:0">${inv.invoiceNo||'—'}${isCurrent?' <span style="color:#555;font-size:10px">(this)</span>':''}</span>
       <span style="color:#e0e0e0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${inv.customer||'—'}</span>
       ${cityHint}
     </label>`;
   }).join('');
+  list.insertAdjacentHTML('beforeend',
+    '<div id="tripInvNoMatch" style="display:none;color:#555;font-size:12px;font-style:italic;padding:8px 4px">No invoice matches that search.</div>');
+  const searchEl = document.getElementById('tripInvSearch');
+  if (searchEl) searchEl.value = '';
+  filterTripInvoiceList();
   // Current invoice is always in route at position 0
   tripRouteIds = [costModalId];
+}
+
+// Filter by hiding rows rather than re-rendering — the split logic reads
+// `.trip-inv-cb:checked` from the DOM, so removing rows would drop selections.
+// A ticked row always stays visible, so a search can never hide what you picked.
+function filterTripInvoiceList() {
+  const q = (document.getElementById('tripInvSearch')?.value || '').toLowerCase().trim();
+  const rows = document.querySelectorAll('#tripInvoiceList .trip-inv-row');
+  let shown = 0, selected = 0;
+  rows.forEach(row => {
+    const cb = row.querySelector('.trip-inv-cb');
+    const isChecked = cb && cb.checked;
+    if (isChecked) selected++;
+    const match = !q || (row.dataset.hay || '').includes(q);
+    const visible = match || isChecked;
+    row.style.display = visible ? 'flex' : 'none';
+    if (visible) shown++;
+  });
+  const none = document.getElementById('tripInvNoMatch');
+  if (none) none.style.display = shown ? 'none' : 'block';
+  const count = document.getElementById('tripSelCount');
+  if (count) count.textContent = selected > 1 ? `${selected} selected` : '';
+}
+
+function clearTripInvSearch() {
+  const el = document.getElementById('tripInvSearch');
+  if (el) { el.value = ''; el.focus(); }
+  filterTripInvoiceList();
 }
 function onTripInvToggle(cb) {
   const id = cb.dataset.id;
   if (cb.checked) { if (!tripRouteIds.includes(id)) tripRouteIds.push(id); }
   else { tripRouteIds = tripRouteIds.filter(x => x !== id); }
+  filterTripInvoiceList();   // refresh the selected count / keep ticked rows visible
   renderTripRouteOrder();
   updateTripShare();
 }

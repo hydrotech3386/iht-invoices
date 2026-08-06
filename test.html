@@ -707,12 +707,21 @@
   <div class="modal" style="max-width:320px">
     <h2>🚚 Transport Rate</h2>
     <div style="font-size:12px;color:#888;margin-bottom:14px">Cost per kilometre, applied to all transport. Changes apply immediately.</div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <span style="color:#aaa;font-size:12px;min-width:58px">Rate</span>
       <span style="color:#aaa;font-size:12px">RM</span>
       <input id="transportRateInput" type="number" min="0" step="0.01"
         style="flex:1;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px">
       <span style="color:#aaa;font-size:12px">/km</span>
     </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+      <span style="color:#aaa;font-size:12px;min-width:58px">Minimum</span>
+      <span style="color:#aaa;font-size:12px">RM</span>
+      <input id="transportMinInput" type="number" min="0" step="0.01"
+        style="flex:1;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px">
+      <span style="color:#aaa;font-size:12px">per invoice</span>
+    </div>
+    <div style="font-size:11px;color:#7f97b3;margin-bottom:12px;line-height:1.5">No invoice is charged less than this for transport — on a single delivery or as a share of a combined trip.</div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeVehicleRatesModal()">Cancel</button>
       <button class="btn-confirm" onclick="saveVehicleRatesModal()">Save</button>
@@ -894,7 +903,7 @@
     </div>
     <div id="transportCityHint" style="font-size:11px;color:#aaa;margin-bottom:8px;min-height:15px"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-      <span style="font-size:12px;color:#aaa">Round trip cost: <strong id="transportCalcAmt" style="color:#f39c12">RM 0.00</strong></span>
+      <span style="font-size:12px;color:#aaa">Round trip cost: <strong id="transportCalcAmt" style="color:#f39c12">RM 0.00</strong> <span id="transportMinNote" style="font-size:10px;color:#7f97b3;display:none"></span></span>
       <button class="btn-confirm" style="padding:5px 12px;font-size:12px" onclick="addTransportToCost()">+ Add to Items</button>
     </div>
     <div class="section-divider" style="margin-top:14px">Delivery Trip</div>
@@ -1668,9 +1677,14 @@ function onLoggedIn() {
   firebase.database().ref('appSettings').once('value').then(snap => {
     if (snap.val()) {
       Object.assign(appSettings, snap.val());
-      // Sync transport rate from Firebase → localStorage → display
+      // Sync transport rate + minimum from Firebase → localStorage → display
       if (appSettings.transportRate) {
         localStorage.setItem(TRANSPORT_RATE_KEY, String(appSettings.transportRate));
+      }
+      if (typeof appSettings.transportMin === 'number') {
+        localStorage.setItem(TRANSPORT_MIN_KEY, String(appSettings.transportMin));
+      }
+      if (appSettings.transportRate || typeof appSettings.transportMin === 'number') {
         populateVehicleDropdowns();
       }
       // Sync transport cache from Firebase → localStorage
@@ -2770,7 +2784,11 @@ function renderTripRouteOrder() {
     const missingBadge = !pinned
       ? `<span style="color:${distKm>0?'#f39c12':'#e74c3c'};font-size:10px;flex-shrink:0">⚠ no map pin</span>` : '';
     const shareBadge = share && share.amount > 0
-      ? `<span style="color:#5dfc8d;font-size:11px;font-weight:600;flex-shrink:0">${fmtRM(share.amount)}</span><span style="color:#8fa8c4;font-size:11px;flex-shrink:0">(${Math.round(share.ratio*100)}%)</span>`
+      ? `<span style="color:#5dfc8d;font-size:11px;font-weight:600;flex-shrink:0">${fmtRM(share.amount)}</span>` +
+        (share.floored
+          ? `<span style="color:#f39c12;font-size:10px;flex-shrink:0" title="Raised to the RM ${getTransportMin().toFixed(2)} minimum — distance alone gives ${fmtRM(share.raw)}">min</span>`
+          : '') +
+        `<span style="color:#8fa8c4;font-size:11px;flex-shrink:0">(${Math.round(share.ratio*100)}%)</span>`
       : '';
     // ↺ resets a pin set for this trip — cached coordinates are managed in the cache manager
     const clearBtn = tripInvLocations[id]
@@ -2844,29 +2862,44 @@ function updateTripShare() {
 
     const totalStopKm = stopKms.reduce((s, d) => s + d.km, 0);
 
+    const minCost = getTransportMin();
     if (totalStopKm > 0) {
-      // Distance-ratio split: further = larger share
+      // Distance-ratio split: further = larger share. The raw split still sums
+      // to the driven cost; the minimum is then applied to each stop on its own,
+      // so a short stop never drags cost off the others.
       let assigned = 0;
       stopKms.forEach((d, i) => {
         const ratio = d.km / totalStopKm;
         // Last invoice absorbs rounding difference
-        const amount = i === stopKms.length - 1
+        const raw = i === stopKms.length - 1
           ? Math.round((totalCost - assigned) * 100) / 100
           : Math.round(ratio * totalCost * 100) / 100;
-        tripInvShares[d.id] = { km: d.km, ratio, amount };
-        assigned += amount;
+        assigned += raw;
+        tripInvShares[d.id] = { km: d.km, ratio, raw, amount: Math.max(raw, minCost), floored: raw < minCost };
       });
     } else {
       // Fallback: equal split when no distances are known
-      const share = Math.round(totalCost / count * 100) / 100;
-      checkedIds.forEach(id => tripInvShares[id] = { km: 0, ratio: 1 / count, amount: share });
+      const raw = Math.round(totalCost / count * 100) / 100;
+      checkedIds.forEach(id => tripInvShares[id] = {
+        km: 0, ratio: 1 / count, raw, amount: Math.max(raw, minCost), floored: raw < minCost });
     }
+    // Percentages shown must match the money actually allocated, not the raw split
+    const allocated = Object.values(tripInvShares).reduce((s, x) => s + x.amount, 0);
+    if (allocated > 0) Object.values(tripInvShares).forEach(x => { x.ratio = x.amount / allocated; });
   }
 
   const hasDistances = Object.values(tripInvShares).some(s => s.km > 0);
-  document.getElementById('tripTotalDisplay').textContent = fmtRM(totalCost);
+  const allocatedTotal = Object.values(tripInvShares).reduce((s, x) => s + x.amount, 0);
+  const flooredCount = Object.values(tripInvShares).filter(x => x.floored).length;
+  const totalEl = document.getElementById('tripTotalDisplay');
+  totalEl.textContent = fmtRM(allocatedTotal || totalCost);
+  totalEl.title = flooredCount
+    ? `Trip drove ${fmtRM(totalCost)}; ${flooredCount} stop(s) raised to the RM ${getTransportMin().toFixed(2)} minimum`
+    : '';
   document.getElementById('tripShareDisplay').textContent =
-    totalCost > 0 ? (hasDistances ? 'Distance-based' : 'Equal split') : '—';
+    totalCost > 0
+      ? (hasDistances ? 'Distance-based' : 'Equal split') + (flooredCount ? ` · ${flooredCount} at min` : '')
+      : '—';
 
   renderTripRouteOrder(); // refresh rows to show per-invoice amounts
 
@@ -3024,17 +3057,25 @@ async function calculateRouteDistance() {
 // One flat rate per km for all transport — no vehicle types.
 const TRANSPORT_RATE_KEY = 'iht_transport_rate';
 const TRANSPORT_RATE_DEFAULT = 1.20;
+// Floor applied per invoice — a short delivery still costs something to service
+const TRANSPORT_MIN_KEY = 'iht_transport_min';
+const TRANSPORT_MIN_DEFAULT = 30;
 
 function getTransportRate() {
   const v = parseFloat(localStorage.getItem(TRANSPORT_RATE_KEY));
   return (!isNaN(v) && v > 0) ? v : TRANSPORT_RATE_DEFAULT;
 }
+function getTransportMin() {
+  const v = parseFloat(localStorage.getItem(TRANSPORT_MIN_KEY));
+  return (!isNaN(v) && v >= 0) ? v : TRANSPORT_MIN_DEFAULT;
+}
 function populateVehicleDropdowns() {
   const el = document.getElementById('transportRateDisplay');
-  if (el) el.textContent = `RM ${getTransportRate().toFixed(2)} / km`;
+  if (el) el.textContent = `RM ${getTransportRate().toFixed(2)} / km · min RM ${getTransportMin().toFixed(2)}`;
 }
 function openVehicleRatesModal() {
   document.getElementById('transportRateInput').value = getTransportRate().toFixed(2);
+  document.getElementById('transportMinInput').value = getTransportMin().toFixed(2);
   document.getElementById('vehicleRatesBg').classList.add('open');
 }
 function closeVehicleRatesModal() {
@@ -3043,8 +3084,12 @@ function closeVehicleRatesModal() {
 function saveVehicleRatesModal() {
   const v = parseFloat(document.getElementById('transportRateInput').value);
   if (isNaN(v) || v <= 0) { alert('Enter a rate greater than 0.'); return; }
+  const mn = parseFloat(document.getElementById('transportMinInput').value);
+  if (isNaN(mn) || mn < 0) { alert('Enter a minimum of 0 or more.'); return; }
   localStorage.setItem(TRANSPORT_RATE_KEY, String(v));
   syncSettingToFirebase('transportRate', v);
+  localStorage.setItem(TRANSPORT_MIN_KEY, String(mn));
+  syncSettingToFirebase('transportMin', mn);
   populateVehicleDropdowns();
   updateTransportCalc();
   updateTripShare();
@@ -3404,10 +3449,25 @@ function initTransportCalc(customerName) {
   // setDeliverTo fills the km field from the right source and updates the total
   setDeliverTo((inv && inv.deliverTo === 'site') ? 'site' : 'office');
 }
+// Round-trip cost for one delivery, never below the per-invoice minimum.
+// A zero distance stays zero — the floor applies to a delivery, not to a blank field.
+function transportCostFor(km) {
+  if (!km || km <= 0) return 0;
+  const raw = Math.round(km * 2 * getTransportRate() * 100) / 100;
+  return Math.max(raw, getTransportMin());
+}
 function updateTransportCalc() {
   const km = parseFloat(document.getElementById('fTransportKm').value) || 0;
-  const rate = getTransportRate();
-  document.getElementById('transportCalcAmt').textContent = fmtRM(Math.round(km * 2 * rate * 100) / 100);
+  const raw = Math.round(km * 2 * getTransportRate() * 100) / 100;
+  const amt = transportCostFor(km);
+  const el = document.getElementById('transportCalcAmt');
+  el.textContent = fmtRM(amt);
+  el.title = (amt > raw) ? `Raised to the RM ${getTransportMin().toFixed(2)} minimum (distance gives ${fmtRM(raw)})` : '';
+  const note = document.getElementById('transportMinNote');
+  if (note) {
+    note.textContent = (amt > raw) ? `minimum applied — distance alone gives ${fmtRM(raw)}` : '';
+    note.style.display = (amt > raw) ? 'inline' : 'none';
+  }
 }
 const MY_CITIES = [
   'Ipoh','Taiping','Teluk Intan','Manjung','Kampar','Batu Gajah','Lumut','Bidor',
@@ -3571,7 +3631,7 @@ async function lookupDistance() {
 function addTransportToCost() {
   const km = parseFloat(document.getElementById('fTransportKm').value) || 0;
   const rate = getTransportRate();
-  const amt = Math.round(km * 2 * rate * 100) / 100;
+  const amt = transportCostFor(km);
   if (!amt) { alert('Enter a distance first.'); return; }
   // Check for existing transport row and offer to replace
   let existingRow = null;

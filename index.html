@@ -472,8 +472,11 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
+
 
 <div class="auth-overlay" id="authOverlay">
   <div class="auth-card">
@@ -695,6 +698,120 @@
   </div>
 </div>
 
+<!-- Map Picker Modal -->
+<!-- Transport Rate Modal -->
+<div class="modal-bg" id="vehicleRatesBg" style="z-index:9600">
+  <div class="modal" style="max-width:320px">
+    <h2>🚚 Transport Rate</h2>
+    <div style="font-size:12px;color:#888;margin-bottom:14px">Cost per kilometre, applied to all transport. Changes apply immediately.</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <span style="color:#aaa;font-size:12px;min-width:58px">Rate</span>
+      <span style="color:#aaa;font-size:12px">RM</span>
+      <input id="transportRateInput" type="number" min="0" step="0.01"
+        style="flex:1;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px">
+      <span style="color:#aaa;font-size:12px">/km</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+      <span style="color:#aaa;font-size:12px;min-width:58px">Minimum</span>
+      <span style="color:#aaa;font-size:12px">RM</span>
+      <input id="transportMinInput" type="number" min="0" step="0.01"
+        style="flex:1;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px">
+      <span style="color:#aaa;font-size:12px">per invoice</span>
+    </div>
+    <div style="font-size:11px;color:#7f97b3;margin-bottom:12px;line-height:1.5">No invoice is charged less than this for transport — on a single delivery or as a share of a combined trip.</div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeVehicleRatesModal()">Cancel</button>
+      <button class="btn-confirm" onclick="saveVehicleRatesModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Transport Cache Manager Modal -->
+<div class="modal-bg" id="cacheManagerBg" style="z-index:9500">
+  <div class="modal" style="max-width:560px;padding:0;overflow:hidden">
+    <div style="padding:12px 16px;border-bottom:1px solid #1a3a6a;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-weight:700;font-size:15px;color:#fff">🗂 Transport Distance Cache</div>
+      <button onclick="closeCacheManager()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:20px;line-height:1">✕</button>
+    </div>
+    <div style="padding:8px 14px 4px;font-size:11px;color:#888">Distances auto-saved when you use Transport Cost. Edit, delete, or add entries manually.</div>
+    <div id="cacheManagerList" style="max-height:300px;overflow-y:auto;padding:6px 14px 14px"></div>
+    <div style="padding:10px 14px;border-top:1px solid #1a3a6a;background:#071628">
+      <div style="font-size:11px;color:#4fc3f7;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">+ Add New Entry</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
+        <div style="flex:2;min-width:130px">
+          <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">Customer Name</label>
+          <input id="cacheNewCustomer" list="cacheCustomerSuggestions" placeholder="Type or pick a customer…" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px;box-sizing:border-box">
+          <datalist id="cacheCustomerSuggestions"></datalist>
+        </div>
+        <div style="min-width:90px">
+          <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">City / Area</label>
+          <input id="cacheNewCity" placeholder="e.g. Ipoh" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px;box-sizing:border-box">
+        </div>
+        <div style="min-width:70px">
+          <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">One-way km</label>
+          <input id="cacheNewKm" type="number" min="0" placeholder="0" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px;box-sizing:border-box">
+        </div>
+        <button onclick="openMapPickerForCache()" title="Find on map" style="background:#1a3a6a;border:none;border-radius:4px;color:#fff;padding:6px 12px;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0">📍 Map</button>
+        <button onclick="addNewCacheEntry()" style="background:#1a6a3a;border:none;border-radius:4px;color:#fff;padding:6px 14px;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0">+ Add</button>
+      </div>
+      <div style="font-size:10px;color:#666;margin-top:6px">📍 Map searches the customer name and fills the distance for you.</div>
+    </div>
+    <div style="padding:8px 16px 10px;border-top:1px solid #1a3a6a;display:flex;justify-content:flex-end;align-items:center">
+      <button class="btn-cancel" onclick="closeCacheManager()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Saved Sites Modal -->
+<div class="modal-bg" id="sitesManagerBg" style="z-index:9500">
+  <div class="modal" style="max-width:560px;padding:0;overflow:hidden">
+    <div style="padding:12px 16px;border-bottom:1px solid #1a3a6a;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-weight:700;font-size:15px;color:#fff">🏗 Saved Delivery Sites</div>
+      <button onclick="closeSitesManager()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:20px;line-height:1">✕</button>
+    </div>
+    <div style="padding:8px 14px 4px;font-size:11px;color:#888">Sites are saved automatically when you add a site delivery to cost items. Any customer can be delivered to any site.</div>
+    <div id="sitesManagerList" style="max-height:340px;overflow-y:auto;padding:6px 14px 14px"></div>
+    <div style="padding:8px 16px 10px;border-top:1px solid #1a3a6a;display:flex;justify-content:flex-end;align-items:center">
+      <button class="btn-cancel" onclick="closeSitesManager()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="mapPickerBg" style="z-index:10000"
+  <div class="modal" style="max-width:620px;padding:0;overflow:hidden">
+    <div style="padding:12px 16px;border-bottom:1px solid #1a3a6a;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div id="mapPickerTitle" style="font-weight:700;font-size:15px;color:#fff">📍 Set Delivery Location</div>
+        <div id="mapPickerSubtitle" style="font-size:11px;color:#aaa;margin-top:2px">Click anywhere on the map to drop a pin</div>
+      </div>
+      <button onclick="closeMapPicker()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:20px;line-height:1">✕</button>
+    </div>
+    <div id="mapSearchBar" style="padding:8px 12px;border-bottom:1px solid #1a3a6a;position:relative">
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="text" id="mapSearchInput" placeholder="Company name, or paste coordinates / Google Maps link…"
+          style="flex:1;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:12px;outline:none"
+          oninput="onMapSearchInput()" onkeydown="if(event.key==='Enter')doMapSearch()">
+        <button onclick="doMapSearch()" style="background:#1a3a6a;border:none;border-radius:5px;color:#fff;padding:7px 12px;font-size:12px;cursor:pointer;white-space:nowrap">🔍 Search</button>
+      </div>
+      <div style="font-size:10px;color:#666;margin-top:4px">
+        Can't find it? In Google Maps right-click the pin → click the coordinates to copy → paste here.
+      </div>
+      <div id="mapSearchResults" style="position:absolute;left:12px;right:12px;background:#0d2044;border:1px solid #1a3a6a;border-radius:0 0 6px 6px;z-index:99999;max-height:200px;overflow-y:auto;display:none"></div>
+    </div>
+    <div id="mapPickerEl" style="height:340px;width:100%"></div>
+    <div style="padding:10px 16px;border-top:1px solid #1a3a6a;display:flex;justify-content:space-between;align-items:center;gap:12px">
+      <div style="flex:1;min-width:0">
+        <div id="mapPickerInfo" style="font-size:12px;color:#aaa">No location selected</div>
+        <div id="mapPickerDist" style="font-size:13px;color:#5dfc8d;font-weight:600;margin-top:2px"></div>
+      </div>
+      <div id="mapPickerActions" style="display:flex;gap:8px;flex-shrink:0">
+        <button id="mapPickerMyLocBtn" class="btn-re" style="padding:7px 12px;font-size:12px" onclick="useMyLocation()">🎯 My Location</button>
+        <button class="btn-confirm" style="padding:7px 14px;font-size:12px" id="mapPickerConfirmBtn" disabled onclick="confirmMapLocation()">Use This Location</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Payment Modal -->
 <div class="modal-bg" id="paymentModalBg">
   <div class="modal" style="max-width:480px">
@@ -736,9 +853,96 @@
       <span>Total Cost</span>
       <strong id="costModalTotal">RM 0.00</strong>
     </div>
+    <div class="section-divider" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
+      <span>Transport Cost</span>
+      <button onclick="openCacheManager()" style="background:none;border:none;color:#4fc3f7;font-size:11px;cursor:pointer;padding:0;text-decoration:underline">Manage Cache</button>
+    </div>
+    <div id="transportCacheInfo" style="font-size:11px;color:#5dfc8d;margin-bottom:8px;display:none"></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+      <span style="font-size:11px;color:#aaa;flex-shrink:0">Deliver to</span>
+      <div style="display:flex;border:1px solid #1a3a6a;border-radius:5px;overflow:hidden;flex-shrink:0">
+        <button type="button" id="destOfficeBtn" onclick="setDeliverTo('office')"
+          style="background:#0f3460;border:none;color:#fff;padding:6px 12px;font-size:12px;cursor:pointer">🏢 Customer</button>
+        <button type="button" id="destSiteBtn" onclick="setDeliverTo('site')"
+          style="background:#0a1628;border:none;border-left:1px solid #1a3a6a;color:#7f97b3;padding:6px 12px;font-size:12px;cursor:pointer">🏗 Site</button>
+      </div>
+      <span id="destHint" style="font-size:10px;color:#7f97b3"></span>
+    </div>
+    <div id="siteAddrRow" style="display:none;flex-direction:column;gap:6px;margin-bottom:8px">
+      <div style="display:flex;gap:6px">
+        <input type="text" id="fSiteAddress" list="siteSuggestions" oninput="onSiteInputChange()"
+          placeholder="Site name — pick a saved site, or type a new one…"
+          style="flex:1;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px;box-sizing:border-box">
+        <datalist id="siteSuggestions"></datalist>
+        <button class="btn-re" style="padding:7px 10px;font-size:12px;white-space:nowrap;flex-shrink:0" onclick="openMapPickerForSite()">📍 Map</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span id="siteMatchHint" style="font-size:10px;color:#7f97b3"></span>
+        <button onclick="openSitesManager()" style="background:none;border:none;color:#4fc3f7;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;flex-shrink:0">Saved Sites</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:8px">
+      <div style="flex:1">
+        <label style="font-size:11px;color:#aaa;display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+          <span>Rate</span>
+          <button onclick="openVehicleRatesModal()" style="background:none;border:none;color:#4fc3f7;font-size:11px;cursor:pointer;padding:0;text-decoration:underline">Edit Rate</button>
+        </label>
+        <div id="transportRateDisplay" style="background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px">RM 1.20 / km</div>
+      </div>
+      <div style="flex:1">
+        <label style="font-size:11px;color:#aaa;display:block;margin-bottom:3px">Distance (km, one-way)</label>
+        <input type="number" id="fTransportKm" placeholder="0" min="0" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px" oninput="updateTransportCalc()">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <button id="aiEstimateBtn" class="btn-re" style="padding:7px 10px;font-size:12px;white-space:nowrap" onclick="lookupDistance()">🔍 Find</button>
+        <button class="btn-re" style="padding:7px 10px;font-size:12px;white-space:nowrap" onclick="openMapPicker()">📍 Map</button>
+      </div>
+    </div>
+    <div id="transportCityHint" style="font-size:11px;color:#aaa;margin-bottom:8px;min-height:15px"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <span style="font-size:12px;color:#aaa">Round trip cost: <strong id="transportCalcAmt" style="color:#f39c12">RM 0.00</strong> <span id="transportMinNote" style="font-size:10px;color:#7f97b3;display:none"></span></span>
+      <button class="btn-confirm" style="padding:5px 12px;font-size:12px" onclick="addTransportToCost()">+ Add to Items</button>
+    </div>
+    <div class="section-divider" style="margin-top:14px">Delivery Trip</div>
+    <div style="margin-bottom:10px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#ccc">
+        <input type="checkbox" id="tripEnabled" onchange="toggleTripSection()" style="width:15px;height:15px;cursor:pointer">
+        Split transport cost across multiple invoices
+      </label>
+    </div>
+    <div id="tripSection" style="display:none">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-size:12px;color:#aaa;flex-shrink:0">Select invoices on this trip:</span>
+        <span id="tripSelCount" style="font-size:11px;color:#5dfc8d;flex-shrink:0"></span>
+      </div>
+      <div style="position:relative;margin-bottom:6px">
+        <input type="text" id="tripInvSearch" placeholder="Search invoice no. or customer…" oninput="filterTripInvoiceList()"
+          style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:6px 26px 6px 10px;font-size:12px;outline:none;box-sizing:border-box">
+        <button type="button" onclick="clearTripInvSearch()" title="Clear search"
+          style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:#666;cursor:pointer;font-size:14px;line-height:1;padding:2px 4px">✕</button>
+      </div>
+      <div id="tripInvoiceList" style="max-height:160px;overflow-y:auto;border:1px solid #1a3a6a;border-radius:6px;padding:4px;margin-bottom:10px"></div>
+      <div style="font-size:12px;color:#aaa;margin-bottom:6px">Delivery order (Ipoh → ... → Ipoh):</div>
+      <div id="tripRouteOrder" style="border:1px solid #1a3a6a;border-radius:6px;padding:6px;margin-bottom:10px;min-height:40px">
+        <div style="color:#555;font-size:12px;font-style:italic;padding:4px">Select invoices above to set route order.</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <button class="btn-re" style="padding:6px 12px;font-size:12px" onclick="calculateRouteDistance()">🤖 Calculate Route</button>
+        <div style="flex:1">
+          <input type="number" id="fTripTotalKm" placeholder="Total km" min="0" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:6px 10px;font-size:13px" oninput="updateTripShare()">
+        </div>
+        <span style="font-size:11px;color:#555;white-space:nowrap">km</span>
+        <button class="btn-re" style="padding:6px 8px;font-size:11px;white-space:nowrap" onclick="openMapPicker('trip')">📍</button>
+      </div>
+      <div id="tripRouteHint" style="font-size:11px;color:#aaa;margin-bottom:8px;min-height:14px"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid #1a3a6a">
+        <span style="font-size:12px;color:#aaa">Total cost: <strong id="tripTotalDisplay" style="color:#f39c12">RM 0.00</strong></span>
+        <span style="font-size:12px;color:#aaa">Allocation: <strong id="tripShareDisplay" style="color:#5dfc8d">—</strong></span>
+      </div>
+    </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeCostModal()">Cancel</button>
-      <button class="btn-confirm" onclick="saveCostModal()">Save</button>
+      <button class="btn-confirm" id="costSaveBtn" onclick="saveCostModal()">Save</button>
     </div>
   </div>
 </div>
@@ -968,6 +1172,23 @@
 
 <script>
 const STORAGE_KEY = 'hydrotech_invoices_v1';
+
+function exportForTesting() {
+  const count = state.invoices ? state.invoices.length : 0;
+  if (!count) { alert('No invoice data loaded yet. Wait for sync to complete.'); return; }
+  const blob = new Blob([JSON.stringify(state)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `iht_test_data_${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+  alert(`✓ Exported ${count} invoices.
+
+In test.html, click "📁 Import Data" and select this file.`);
+}
+
 let session      = null;
 let sessionWatchInterval = null;
 let commentsId   = null;
@@ -1363,20 +1584,6 @@ async function registerAsync() {
   } catch(err) { errEl.textContent = 'Registration error: ' + err.message; console.error(err); }
 }
 
-function exportForTesting() {
-  const count = state.invoices ? state.invoices.length : 0;
-  if (!count) { alert('No invoice data loaded yet. Wait for sync to complete.'); return; }
-  const blob = new Blob([JSON.stringify(state)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `iht_test_data_${new Date().toISOString().slice(0,10)}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(a.href);
-  alert(`✓ Exported ${count} invoices.\n\nIn test.html, click "📁 Import Data" and select this file.`);
-}
-
 function logout(reason) {
   if (sessionWatchInterval) { clearInterval(sessionWatchInterval); sessionWatchInterval = null; }
   if (session && usersRef && fbReady) {
@@ -1437,7 +1644,27 @@ function onLoggedIn() {
   if (!fbReady) return;
   // Load Telegram settings and chat ID map
   firebase.database().ref('appSettings').once('value').then(snap => {
-    if (snap.val()) Object.assign(appSettings, snap.val());
+    if (snap.val()) {
+      Object.assign(appSettings, snap.val());
+      // Sync transport rate + minimum from Firebase → localStorage → display
+      if (appSettings.transportRate) {
+        localStorage.setItem(TRANSPORT_RATE_KEY, String(appSettings.transportRate));
+      }
+      if (typeof appSettings.transportMin === 'number') {
+        localStorage.setItem(TRANSPORT_MIN_KEY, String(appSettings.transportMin));
+      }
+      if (appSettings.transportRate || typeof appSettings.transportMin === 'number') {
+        populateVehicleDropdowns();
+      }
+      // Sync transport cache from Firebase → localStorage
+      if (appSettings.transportCache) {
+        localStorage.setItem(TRANSPORT_CACHE_KEY, JSON.stringify(appSettings.transportCache));
+      }
+      // Sync saved delivery sites from Firebase → localStorage
+      if (appSettings.sites) {
+        localStorage.setItem(SITES_KEY, JSON.stringify(appSettings.sites));
+      }
+    }
   });
   // Load lastNotifRead then subscribe badge
   usersRef.child(session.uid).child('lastNotifRead').once('value').then(snap => {
@@ -2329,22 +2556,50 @@ function openCostModal(id) {
   let items = inv.costItems && inv.costItems.length > 0
     ? inv.costItems
     : (inv.cost > 0 ? [{desc: '', amount: inv.cost}] : []);
-  items.forEach(item => _addCostItemRow(item.desc || '', item.amount || 0));
-  if (!items.length) _addCostItemRow('', 0);
+  items.forEach(item => _addCostItemRow(item.desc || '', item.amount || 0, item.tripId || ''));
+  if (!items.length) _addCostItemRow('', 0, '');
   _updateCostTotal();
+  populateVehicleDropdowns();
+  initTransportCalc(inv.customer);
   document.getElementById('costModalBg').classList.add('open');
   setTimeout(() => { const f = list.querySelector('.cost-item-desc'); if (f) f.focus(); }, 100);
 }
-function _addCostItemRow(desc, amount) {
+function _addCostItemRow(desc, amount, tripId) {
   const list = document.getElementById('costItemsList');
   const row = document.createElement('div');
   row.className = 'cost-item-row';
+  if (tripId) row.dataset.tripId = tripId;
   const safeDesc = String(desc).replace(/"/g, '&quot;');
+  const isShared = tripId ? true : false;
   row.innerHTML = `<input type="text" class="cost-item-desc" placeholder="Description" value="${safeDesc}">` +
     `<input type="text" inputmode="decimal" class="cost-item-amt" placeholder="0.00" value="${amount > 0 ? Number(amount).toFixed(2) : ''}">` +
-    `<button class="btn-rm-cost-item" onclick="this.closest('.cost-item-row').remove();_updateCostTotal()" title="Remove">✕</button>`;
+    `<button class="btn-rm-cost-item" onclick="removeCostItemRow(this)" title="${isShared ? 'Remove shared trip cost' : 'Remove'}" style="${isShared ? 'color:#e94560' : ''}">✕</button>`;
   row.querySelectorAll('input').forEach(inp => inp.addEventListener('input', _updateCostTotal));
   list.appendChild(row);
+}
+function removeCostItemRow(btn) {
+  const row = btn.closest('.cost-item-row');
+  const tripId = row.dataset.tripId;
+  if (tripId) {
+    const others = state.invoices.filter(inv =>
+      inv.id !== costModalId &&
+      (inv.costItems || []).some(item => item.tripId === tripId)
+    );
+    if (others.length) {
+      const names = others.map(inv => inv.invoiceNo || inv.id).join(', ');
+      if (confirm(`This is a shared trip cost.\n\nRemove from other invoices too?\n• ${names}`)) {
+        others.forEach(inv => {
+          inv.costItems = (inv.costItems || []).filter(item => item.tripId !== tripId);
+          inv.cost = inv.costItems.reduce((s, i) => s + i.amount, 0);
+          inv.updatedAt = Date.now();
+        });
+        persistState();
+        renderList();
+      }
+    }
+  }
+  row.remove();
+  _updateCostTotal();
 }
 function addCostItem() {
   _addCostItemRow('', 0);
@@ -2362,8 +2617,1527 @@ function _updateCostTotal() {
 }
 function closeCostModal() {
   document.getElementById('costModalBg').classList.remove('open');
+  document.getElementById('tripEnabled').checked = false;
+  document.getElementById('tripSection').style.display = 'none';
+  document.getElementById('fTripTotalKm').value = '';
+  document.getElementById('fTripRate').value = '';
+  document.getElementById('tripRouteHint').textContent = '';
+  tripRouteIds = [];
+  document.getElementById('fTransportKm').value = '';
+  document.getElementById('transportCityHint').textContent = '';
+  document.getElementById('transportCacheInfo').style.display = 'none';
+  document.getElementById('transportCalcAmt').textContent = 'RM 0.00';
+  // Clear the destination so it cannot leak into the next invoice opened
+  currentDeliverTo = 'office';
+  currentSiteLoc = null;
+  currentTransportCoords = null;
+  document.getElementById('fSiteAddress').value = '';
+  document.getElementById('destHint').textContent = '';
   costModalId = null;
 }
+let tripRouteIds = []; // ordered list of invoice IDs in route
+let tripInvLocations = {}; // invId → { lat, lng, label, km } for custom delivery spots
+let tripInvShares = {}; // invId → { km, ratio, amount } — distance-weighted cost share
+function toggleTripSection() {
+  const enabled = document.getElementById('tripEnabled').checked;
+  document.getElementById('tripSection').style.display = enabled ? 'block' : 'none';
+  if (enabled) {
+    tripRouteIds = [];
+    tripInvLocations = {};
+    tripInvShares = {};
+    populateTripInvoiceList();
+    renderTripRouteOrder();
+    updateTripShare();
+  }
+}
+function populateTripInvoiceList() {
+  const list = document.getElementById('tripInvoiceList');
+  // Include current invoice + all others
+  const all = [...state.invoices].sort((a,b) => (b.invoiceDate||'') > (a.invoiceDate||'') ? 1 : -1);
+  if (!all.length) { list.innerHTML = '<div style="color:#555;font-size:12px;padding:6px">No invoices.</div>'; return; }
+  list.innerHTML = all.map(inv => {
+    const isCurrent = inv.id === costModalId;
+    const cache = getTransportCache()[(inv.customer||'').toLowerCase().trim()];
+    const cityHint = inv.deliverTo === 'site'
+      ? `<span style="color:#4fc3f7;font-size:10px">🏗 ${inv.siteLocation && inv.siteLocation.label ? String(inv.siteLocation.label).slice(0,18) : 'site'}</span>`
+      : (cache ? `<span style="color:#5dfc8d;font-size:10px">${cache.city}</span>`
+               : `<span style="color:#7f97b3;font-size:10px">no cache</span>`);
+    // Searchable haystack: invoice no. + customer + cached city
+    const hay = `${inv.invoiceNo||''} ${inv.customer||''} ${cache ? cache.city||'' : ''}`.toLowerCase();
+    return `<label class="trip-inv-row" data-hay="${hay.replace(/"/g,'&quot;')}" style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-bottom:1px solid #0f1e35;font-size:12px">
+      <input type="checkbox" class="trip-inv-cb" data-id="${inv.id}" ${isCurrent?'checked disabled':''} onchange="onTripInvToggle(this)" style="flex-shrink:0;cursor:pointer">
+      <span style="color:#4fc3f7;min-width:70px;flex-shrink:0">${inv.invoiceNo||'—'}${isCurrent?' <span style="color:#555;font-size:10px">(this)</span>':''}</span>
+      <span style="color:#e0e0e0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${inv.customer||'—'}</span>
+      ${cityHint}
+    </label>`;
+  }).join('');
+  list.insertAdjacentHTML('beforeend',
+    '<div id="tripInvNoMatch" style="display:none;color:#555;font-size:12px;font-style:italic;padding:8px 4px">No invoice matches that search.</div>');
+  const searchEl = document.getElementById('tripInvSearch');
+  if (searchEl) searchEl.value = '';
+  filterTripInvoiceList();
+  // Current invoice is always in route at position 0
+  tripRouteIds = [costModalId];
+}
+
+// Filter by hiding rows rather than re-rendering — the split logic reads
+// `.trip-inv-cb:checked` from the DOM, so removing rows would drop selections.
+// A ticked row always stays visible, so a search can never hide what you picked.
+function filterTripInvoiceList() {
+  const q = (document.getElementById('tripInvSearch')?.value || '').toLowerCase().trim();
+  const rows = document.querySelectorAll('#tripInvoiceList .trip-inv-row');
+  let shown = 0, selected = 0;
+  rows.forEach(row => {
+    const cb = row.querySelector('.trip-inv-cb');
+    const isChecked = cb && cb.checked;
+    if (isChecked) selected++;
+    const match = !q || (row.dataset.hay || '').includes(q);
+    const visible = match || isChecked;
+    row.style.display = visible ? 'flex' : 'none';
+    if (visible) shown++;
+  });
+  const none = document.getElementById('tripInvNoMatch');
+  if (none) none.style.display = shown ? 'none' : 'block';
+  const count = document.getElementById('tripSelCount');
+  if (count) count.textContent = selected > 1 ? `${selected} selected` : '';
+}
+
+function clearTripInvSearch() {
+  const el = document.getElementById('tripInvSearch');
+  if (el) { el.value = ''; el.focus(); }
+  filterTripInvoiceList();
+}
+function onTripInvToggle(cb) {
+  const id = cb.dataset.id;
+  if (cb.checked) { if (!tripRouteIds.includes(id)) tripRouteIds.push(id); }
+  else { tripRouteIds = tripRouteIds.filter(x => x !== id); }
+  filterTripInvoiceList();   // refresh the selected count / keep ticked rows visible
+  renderTripRouteOrder();
+  updateTripShare();
+}
+function renderTripRouteOrder() {
+  const el = document.getElementById('tripRouteOrder');
+  if (tripRouteIds.length <= 1) {
+    el.innerHTML = '<div style="color:#7f97b3;font-size:12px;font-style:italic;padding:4px">Select other invoices above.</div>';
+    return;
+  }
+  const cache = getTransportCache();
+  const rows = tripRouteIds.map((id, idx) => {
+    const inv = state.invoices.find(i => i.id === id);
+    const cust = inv ? (inv.customer||'—') : '—';
+    const city = cache[(cust).toLowerCase().trim()]?.city || '';
+    const isCurrent = id === costModalId;
+    const loc = getStopLocation(id);   // trip pin, site location, or customer cache
+    const pinned = !!loc;              // has real coordinates → routable
+    const isSite = isSiteDelivery(id);
+    const siteTag = isSite
+      ? ` <span style="color:#4fc3f7;font-size:10px" title="${loc && loc.label ? String(loc.label).replace(/"/g,'&quot;') : 'Site delivery'}">🏗 site</span>`
+      : '';
+    const share = tripInvShares[id];
+
+    // A site delivery never falls back to the customer's cached distance
+    const distKm = loc ? loc.km : (isSite ? 0 : (cache[(cust).toLowerCase().trim()]?.km || 0));
+    const hasAnyLocation = pinned || distKm > 0;
+    // Pin button: green=coordinates known, orange=km only (can't route), red=nothing
+    const pinColor = pinned ? '#5dfc8d' : (distKm > 0 ? '#f39c12' : '#e74c3c');
+    const locBtnStyle = `background:${hasAnyLocation?'none':'rgba(231,76,60,0.1)'};border:1px solid ${pinColor};border-radius:3px;color:${pinColor};cursor:pointer;padding:1px 5px;font-size:11px;flex-shrink:0${!hasAnyLocation?';font-weight:700':''}`;
+
+    const kmBadge = distKm > 0 ? `<span style="color:${pinned?'#aaa':'#f39c12'};font-size:10px;flex-shrink:0">${distKm}km${pinned?'':' ⚡'}</span>` : '';
+    const missingBadge = !pinned
+      ? `<span style="color:${distKm>0?'#f39c12':'#e74c3c'};font-size:10px;flex-shrink:0">⚠ no map pin</span>` : '';
+    const shareBadge = share && share.amount > 0
+      ? `<span style="color:#5dfc8d;font-size:11px;font-weight:600;flex-shrink:0">${fmtRM(share.amount)}</span>` +
+        (share.floored
+          ? `<span style="color:#f39c12;font-size:10px;flex-shrink:0" title="Raised to the RM ${getTransportMin().toFixed(2)} minimum — distance alone gives ${fmtRM(share.raw)}">min</span>`
+          : '') +
+        `<span style="color:#8fa8c4;font-size:11px;flex-shrink:0">(${Math.round(share.ratio*100)}%)</span>`
+      : '';
+    // ↺ resets a pin set for this trip — cached coordinates are managed in the cache manager
+    const clearBtn = tripInvLocations[id]
+      ? `<button onclick="clearTripInvLocation('${id}')" title="Reset location back to the cached one" style="background:none;border:none;color:#f39c12;cursor:pointer;padding:0 2px;font-size:12px;flex-shrink:0">↺</button>`
+      : '';
+    // ✕ takes the stop off the trip entirely; the invoice being edited always stays
+    const removeBtn = isCurrent ? '' :
+      `<button onclick="removeTripStop('${id}')" title="Remove this stop from the trip" style="background:none;border:none;color:#e74c3c;cursor:pointer;padding:0 4px;font-size:13px;line-height:1;flex-shrink:0">✕</button>`;
+
+    return `<div style="display:flex;align-items:center;gap:5px;padding:5px 2px;font-size:12px;border-bottom:1px solid ${!hasAnyLocation?'#3d1010':'#0f1e35'}">
+      <span style="color:#7f97b3;min-width:16px;text-align:right;flex-shrink:0">${idx+1}.</span>
+      <span style="color:#e0e0e0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cust}${siteTag}${city&&!loc?` <span style="color:#f39c12;font-size:10px">(${city})</span>`:''}</span>
+      ${kmBadge}${missingBadge}${shareBadge}${clearBtn}
+      <button onclick="openMapPickerForTripInv('${id}')" title="${hasAnyLocation?'Update location':'⚠ Set location — needed for distance split'}" style="${locBtnStyle}">📍</button>
+      ${isCurrent ? '<span style="color:#7f97b3;font-size:10px;flex-shrink:0">this</span>' : `<button onclick="moveTripStop('${id}',-1)" style="background:none;border:none;color:#aaa;cursor:pointer;padding:0 3px;font-size:13px;flex-shrink:0">↑</button><button onclick="moveTripStop('${id}',1)" style="background:none;border:none;color:#aaa;cursor:pointer;padding:0 3px;font-size:13px;flex-shrink:0">↓</button>`}
+      ${removeBtn}
+    </div>`;
+  });
+  el.innerHTML =
+    `<div style="color:#7f97b3;font-size:11px;padding:2px 4px 4px">📍 Ipoh Hydrotech</div>` +
+    rows.join('') +
+    `<div style="color:#7f97b3;font-size:11px;padding:4px 4px 2px">📍 Ipoh Hydrotech (return)</div>`;
+}
+function clearTripInvLocation(id) {
+  delete tripInvLocations[id];
+  renderTripRouteOrder();
+}
+// Take a stop off the trip: drop it from the route, untick it in the list above,
+// and forget any pin set for it. The invoice being edited can never be removed.
+function removeTripStop(id) {
+  if (id === costModalId) return;
+  tripRouteIds = tripRouteIds.filter(x => x !== id);
+  delete tripInvLocations[id];
+  delete tripInvShares[id];
+  const cb = document.querySelector('.trip-inv-cb[data-id="' + id + '"]');
+  if (cb) cb.checked = false;
+  filterTripInvoiceList();
+  updateTripShare();   // recalculates the remaining shares and re-renders the route
+}
+function moveTripStop(id, dir) {
+  const idx = tripRouteIds.indexOf(id);
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= tripRouteIds.length) return;
+  // Don't move past the current invoice (always stays in position but user can reorder others)
+  [tripRouteIds[idx], tripRouteIds[newIdx]] = [tripRouteIds[newIdx], tripRouteIds[idx]];
+  renderTripRouteOrder();
+}
+function updateTripShare() {
+  const km = parseFloat(document.getElementById('fTripTotalKm').value) || 0;
+  const rate = getTransportRate();
+  const totalCost = Math.round(km * rate * 100) / 100;
+
+  const checkedIds = Array.from(document.querySelectorAll('.trip-inv-cb:checked')).map(cb => cb.dataset.id);
+  const count = checkedIds.length;
+  tripInvShares = {};
+
+  if (totalCost > 0 && count > 0) {
+    const cache = getTransportCache();
+    const stopKms = checkedIds.map(id => {
+      const loc = tripInvLocations[id];
+      if (loc && loc.km > 0) return { id, km: loc.km };
+      // getStopLocation resolves site deliveries to their own distance and keeps
+      // the customer cache out of it; fall back to the cache only for office stops.
+      const resolved = getStopLocation(id);
+      if (resolved && resolved.km > 0) return { id, km: resolved.km };
+      if (isSiteDelivery(id)) return { id, km: 0 };
+      const inv = state.invoices.find(i => i.id === id);
+      const cachedKm = inv ? (cache[(inv.customer||'').toLowerCase().trim()]?.km || 0) : 0;
+      return { id, km: cachedKm };
+    });
+
+    const totalStopKm = stopKms.reduce((s, d) => s + d.km, 0);
+
+    const minCost = getTransportMin();
+    if (totalStopKm > 0) {
+      // Distance-ratio split: further = larger share. The raw split still sums
+      // to the driven cost; the minimum is then applied to each stop on its own,
+      // so a short stop never drags cost off the others.
+      let assigned = 0;
+      stopKms.forEach((d, i) => {
+        const ratio = d.km / totalStopKm;
+        // Last invoice absorbs rounding difference
+        const raw = i === stopKms.length - 1
+          ? Math.round((totalCost - assigned) * 100) / 100
+          : Math.round(ratio * totalCost * 100) / 100;
+        assigned += raw;
+        tripInvShares[d.id] = { km: d.km, ratio, raw, amount: Math.max(raw, minCost), floored: raw < minCost };
+      });
+    } else {
+      // Fallback: equal split when no distances are known
+      const raw = Math.round(totalCost / count * 100) / 100;
+      checkedIds.forEach(id => tripInvShares[id] = {
+        km: 0, ratio: 1 / count, raw, amount: Math.max(raw, minCost), floored: raw < minCost });
+    }
+    // Percentages shown must match the money actually allocated, not the raw split
+    const allocated = Object.values(tripInvShares).reduce((s, x) => s + x.amount, 0);
+    if (allocated > 0) Object.values(tripInvShares).forEach(x => { x.ratio = x.amount / allocated; });
+  }
+
+  const hasDistances = Object.values(tripInvShares).some(s => s.km > 0);
+  const allocatedTotal = Object.values(tripInvShares).reduce((s, x) => s + x.amount, 0);
+  const flooredCount = Object.values(tripInvShares).filter(x => x.floored).length;
+  const totalEl = document.getElementById('tripTotalDisplay');
+  totalEl.textContent = fmtRM(allocatedTotal || totalCost);
+  totalEl.title = flooredCount
+    ? `Trip drove ${fmtRM(totalCost)}; ${flooredCount} stop(s) raised to the RM ${getTransportMin().toFixed(2)} minimum`
+    : '';
+  document.getElementById('tripShareDisplay').textContent =
+    totalCost > 0
+      ? (hasDistances ? 'Distance-based' : 'Equal split') + (flooredCount ? ` · ${flooredCount} at min` : '')
+      : '—';
+
+  renderTripRouteOrder(); // refresh rows to show per-invoice amounts
+
+  const saveBtn = document.getElementById('costSaveBtn');
+  if (saveBtn) saveBtn.textContent = count > 1 && totalCost > 0 ? `Save & split to ${count} invoices` : 'Save';
+}
+// Resolve a stop's coordinates: an explicit map pin first, otherwise the
+// coordinates saved in the transport cache for that customer.
+function getStopLocation(invId) {
+  if (tripInvLocations[invId]) return tripInvLocations[invId];
+  const inv = state.invoices.find(i => i.id === invId);
+  if (!inv) return null;
+
+  // The invoice open in the cost modal may have unsaved site changes
+  if (invId === costModalId && currentDeliverTo === 'site') {
+    return (currentSiteLoc && typeof currentSiteLoc.lat === 'number')
+      ? { lat: currentSiteLoc.lat, lng: currentSiteLoc.lng,
+          label: currentSiteLoc.label || 'Site', km: currentSiteLoc.km || 0, isSite: true }
+      : null;   // site delivery with no location yet — must be pinned, not guessed
+  }
+  // A saved site delivery goes to its own location, not the customer's
+  if (inv.deliverTo === 'site') {
+    const sl = inv.siteLocation;
+    return (sl && typeof sl.lat === 'number')
+      ? { lat: sl.lat, lng: sl.lng, label: sl.label || 'Site', km: sl.km || 0, isSite: true }
+      : null;
+  }
+
+  const e = getTransportCache()[(inv.customer || '').toLowerCase().trim()];
+  if (e && typeof e.lat === 'number' && typeof e.lng === 'number') {
+    return { lat: e.lat, lng: e.lng, label: e.city || inv.customer, km: e.km || 0, fromCache: true };
+  }
+  return null;
+}
+// True when this invoice is a site delivery — used to keep the customer cache
+// out of its distance and to flag it in the trip list.
+function isSiteDelivery(invId) {
+  if (invId === costModalId) return currentDeliverTo === 'site';
+  const inv = state.invoices.find(i => i.id === invId);
+  return !!(inv && inv.deliverTo === 'site');
+}
+
+async function calculateRouteDistance() {
+  if (tripRouteIds.length < 2) { alert('Select at least one other invoice for the trip.'); return; }
+  const hint = document.getElementById('tripRouteHint');
+
+  // Any stop without coordinates: look it up automatically and cache the result,
+  // so the user only has to pin manually when every automatic source fails.
+  let locs = tripRouteIds.map(id => getStopLocation(id));
+  const autoFailed = [], autoFound = [];
+  if (!locs.every(Boolean)) {
+    const cache = getTransportCache();
+    for (let i = 0; i < tripRouteIds.length; i++) {
+      if (locs[i]) continue;
+      const inv = state.invoices.find(x => x.id === tripRouteIds[i]);
+      const cust = inv && inv.customer;
+      if (!cust) { autoFailed.push(inv ? inv.invoiceNo : tripRouteIds[i]); continue; }
+      // A site delivery cannot be looked up from the customer name — it has to be pinned
+      if (isSiteDelivery(tripRouteIds[i])) {
+        autoFailed.push(`${cust} — site delivery, needs its own pin`);
+        continue;
+      }
+      hint.textContent = `Finding ${cust}…`;
+      const r = await resolveCustomerLocation(cust, m => { hint.textContent = `${cust}: ${m}`; });
+      if (!r) { autoFailed.push(cust + (lastAiError ? ` — ${lastAiError}` : '')); continue; }
+      const km = await officeRoadKm(r.lat, r.lng);
+      const key = cust.toLowerCase().trim();
+      const prev = cache[key] || {};
+      cache[key] = { ...prev, lat: r.lat, lng: r.lng,
+                     km: km !== null ? km : (prev.km || 0),
+                     rate: prev.rate || getTransportRate(),
+                     city: prev.city || r.label, cachedAt: Date.now() };
+      autoFound.push(`${cust} (${r.source}${r.approx ? ', city centre' : ''})`);
+    }
+    if (autoFound.length) { saveTransportCache(cache); renderTripRouteOrder(); }
+    locs = tripRouteIds.map(id => getStopLocation(id));
+  }
+  const autoNote = autoFound.length
+    ? `<div style="color:#f39c12;font-size:10px;margin-top:3px">Auto-located: ${autoFound.join('; ')} — check with 📍 if a distance looks wrong.</div>`
+    : '';
+
+  // If every stop has coordinates (pin or cache) → real OSRM multi-stop routing, no API key needed
+  if (locs.every(Boolean)) {
+    hint.textContent = 'Calculating road route…';
+    try {
+      const waypoints = [
+        `${IPOH_OFFICE.lng},${IPOH_OFFICE.lat}`,
+        ...locs.map(l => `${l.lng},${l.lat}`),
+        `${IPOH_OFFICE.lng},${IPOH_OFFICE.lat}`
+      ].join(';');
+      const resp = await fetch(`https://router.project-osrm.org/route/v1/driving/${waypoints}?overview=false`);
+      const data = await resp.json();
+      if (data.code === 'Ok' && data.routes.length) {
+        const km = Math.round(data.routes[0].distance / 1000);
+        const mins = Math.round(data.routes[0].duration / 60);
+        document.getElementById('fTripTotalKm').value = km;
+        _lastTripLegs = { stopIds: [...tripRouteIds], stopLocations: locs };
+        hint.innerHTML = `📍 Real road route: ${km} km · ~${mins} min &nbsp;<button onclick="showTripRouteOnMap()" style="background:#1a3a6a;border:none;border-radius:4px;color:#4fc3f7;padding:3px 10px;font-size:11px;cursor:pointer">🗺 View Route</button>` + autoNote;
+        updateTripShare();
+        return;
+      }
+    } catch(e) {}
+    hint.innerHTML = '⚠ Road routing failed. Check connection or try AI estimate.';
+    return;
+  }
+
+  // Fallback: AI estimate using city names, for stops nothing could locate
+  const missingNames = autoFailed;
+  if (missingNames.length) {
+    hint.innerHTML = `⚠ Could not locate <strong>${missingNames.join(', ')}</strong> automatically. Click 📍 next to each to set it — that gives an exact road route and is remembered for next time. Trying AI estimate meanwhile…`;
+  }
+  const key = getClaudeKey();
+  if (!key) {
+    const k = prompt('Paste your Claude API key (needed for AI route estimate):');
+    if (!k || !k.trim()) return;
+    localStorage.setItem(CLAUDE_KEY_STORE, k.trim());
+  }
+  const cache = getTransportCache();
+  const stops = tripRouteIds.map(id => {
+    const inv = state.invoices.find(i => i.id === id);
+    const cust = inv ? (inv.customer||'') : '';
+    return cache[cust.toLowerCase().trim()]?.city || cust;
+  });
+  const route = ['Ipoh, Perak', ...stops, 'Ipoh, Perak'].join(' → ');
+  hint.textContent = 'AI calculating route…';
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': getClaudeKey(), 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-allow-browser': 'true' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 80,
+        messages: [{ role: 'user', content: `Estimate total driving distance in km for this road route in Malaysia: ${route}. Reply with ONLY a number (the total km, no text).` }]
+      })
+    });
+    const data = await resp.json();
+    const text = (data.content?.[0]?.text || '').trim();
+    const km = parseFloat(text.replace(/[^\d.]/g, ''));
+    if (!isNaN(km) && km > 0) {
+      document.getElementById('fTripTotalKm').value = km;
+      hint.textContent = `🤖 AI estimate: ${route} ≈ ${km} km. Edit if needed.`;
+      updateTripShare();
+    } else {
+        hint.innerHTML += '<br>AI could not calculate total km. Please enter manually.';
+    }
+  } catch(e) {
+    hint.innerHTML = missingNames.length
+      ? `⚠ AI estimate failed. Set a map pin (📍) for: <strong>${missingNames.join(', ')}</strong> — then Calculate Route works offline with no AI.`
+      : '⚠ AI estimate failed. Enter total km manually.';
+  }
+}
+
+// ---- Transport cost calculator ----
+// ---- Transport Rate ----
+// One flat rate per km for all transport — no vehicle types.
+const TRANSPORT_RATE_KEY = 'iht_transport_rate';
+const TRANSPORT_RATE_DEFAULT = 1.20;
+// Floor applied per invoice — a short delivery still costs something to service
+const TRANSPORT_MIN_KEY = 'iht_transport_min';
+const TRANSPORT_MIN_DEFAULT = 30;
+
+function getTransportRate() {
+  const v = parseFloat(localStorage.getItem(TRANSPORT_RATE_KEY));
+  return (!isNaN(v) && v > 0) ? v : TRANSPORT_RATE_DEFAULT;
+}
+function getTransportMin() {
+  const v = parseFloat(localStorage.getItem(TRANSPORT_MIN_KEY));
+  return (!isNaN(v) && v >= 0) ? v : TRANSPORT_MIN_DEFAULT;
+}
+function populateVehicleDropdowns() {
+  const el = document.getElementById('transportRateDisplay');
+  if (el) el.textContent = `RM ${getTransportRate().toFixed(2)} / km · min RM ${getTransportMin().toFixed(2)}`;
+}
+function openVehicleRatesModal() {
+  document.getElementById('transportRateInput').value = getTransportRate().toFixed(2);
+  document.getElementById('transportMinInput').value = getTransportMin().toFixed(2);
+  document.getElementById('vehicleRatesBg').classList.add('open');
+}
+function closeVehicleRatesModal() {
+  document.getElementById('vehicleRatesBg').classList.remove('open');
+}
+function saveVehicleRatesModal() {
+  const v = parseFloat(document.getElementById('transportRateInput').value);
+  if (isNaN(v) || v <= 0) { alert('Enter a rate greater than 0.'); return; }
+  const mn = parseFloat(document.getElementById('transportMinInput').value);
+  if (isNaN(mn) || mn < 0) { alert('Enter a minimum of 0 or more.'); return; }
+  localStorage.setItem(TRANSPORT_RATE_KEY, String(v));
+  syncSettingToFirebase('transportRate', v);
+  localStorage.setItem(TRANSPORT_MIN_KEY, String(mn));
+  syncSettingToFirebase('transportMin', mn);
+  populateVehicleDropdowns();
+  updateTransportCalc();
+  updateTripShare();
+  closeVehicleRatesModal();
+}
+
+function syncSettingToFirebase(key, value) {
+  try { firebase.database().ref('appSettings').update({ [key]: value }); } catch(e) {}
+}
+
+const TRANSPORT_CACHE_KEY = 'iht_transport_cache';
+let currentCostCustomer = '';
+// Coordinates of the location found/picked for the current customer, so they
+// can be cached alongside the km and reused for multi-stop route calculation.
+let currentTransportCoords = null;
+
+// ---- Saved delivery sites ----
+// Keyed by lower-cased site name. A site is independent of any customer —
+// several customers can be delivered to the same site.
+const SITES_KEY = 'iht_sites';
+function getSites() {
+  try { return JSON.parse(localStorage.getItem(SITES_KEY) || '{}'); } catch(e) { return {}; }
+}
+function saveSites(sites) {
+  localStorage.setItem(SITES_KEY, JSON.stringify(sites));
+  syncSettingToFirebase('sites', sites);
+}
+function populateSiteSuggestions() {
+  const dl = document.getElementById('siteSuggestions');
+  if (!dl) return;
+  const sites = getSites();
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  dl.innerHTML = Object.keys(sites).sort().map(k => {
+    const s = sites[k];
+    return `<option value="${esc(s.name || k)}" label="${s.km ? s.km + ' km' : ''}">`;
+  }).join('');
+}
+// Typing or picking a saved site name loads its location and distance
+function onSiteInputChange() {
+  const val = (document.getElementById('fSiteAddress').value || '').trim();
+  const hintEl = document.getElementById('siteMatchHint');
+  if (!val) { if (hintEl) hintEl.textContent = ''; return; }
+  const s = getSites()[val.toLowerCase()];
+  if (!s || typeof s.lat !== 'number') {
+    if (hintEl) hintEl.textContent = 'New site — use 🔍 Find or 📍 Map to locate it.';
+    return;
+  }
+  currentSiteLoc = { lat: s.lat, lng: s.lng, label: s.name || val, km: s.km || 0 };
+  if (s.km) document.getElementById('fTransportKm').value = s.km;
+  if (hintEl) hintEl.textContent = `✓ Saved site — ${s.km || '?'} km one-way`;
+  document.getElementById('destHint').textContent = `Site set: ${s.name || val}`;
+  updateTransportCalc();
+}
+// Remember a located site so the next delivery there needs no lookup
+function rememberSite(label, loc, km) {
+  if (!label || !loc || typeof loc.lat !== 'number') return;
+  const sites = getSites();
+  const key = label.toLowerCase().trim();
+  const prev = sites[key] || {};
+  sites[key] = { name: label.trim(), lat: loc.lat, lng: loc.lng,
+                 km: km || prev.km || 0, savedAt: Date.now() };
+  saveSites(sites);
+  populateSiteSuggestions();
+}
+
+function openSitesManager() { renderSitesManagerList(); document.getElementById('sitesManagerBg').classList.add('open'); }
+function closeSitesManager() { document.getElementById('sitesManagerBg').classList.remove('open'); }
+function renderSitesManagerList() {
+  const sites = getSites();
+  const keys = Object.keys(sites).sort();
+  const el = document.getElementById('sitesManagerList');
+  if (!keys.length) {
+    el.innerHTML = '<div style="color:#7f97b3;font-size:13px;text-align:center;padding:20px">No saved sites yet.<br><span style="font-size:11px">Add a site delivery to cost items and it will be saved here.</span></div>';
+    return;
+  }
+  el.innerHTML = keys.map((k, idx) => {
+    const s = sites[k];
+    const eid = `sm${idx}`;
+    const dateStr = s.savedAt ? new Date(s.savedAt).toLocaleDateString('en-MY') : '—';
+    return `<div style="border:1px solid #1a3a6a;border-radius:6px;padding:10px 12px;margin-bottom:8px;background:#071628">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;color:#4fc3f7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🏗 ${String(s.name||k).replace(/</g,'&lt;')}</div>
+          <div id="${eid}-view" style="margin-top:5px;display:flex;gap:12px;flex-wrap:wrap">
+            <span style="font-size:12px;color:#5dfc8d">${s.km||'—'} km one-way</span>
+            <span style="font-size:11px;color:#5dfc8d">🗺 ${typeof s.lat==='number' ? s.lat.toFixed(4)+', '+s.lng.toFixed(4) : 'no pin'}</span>
+            <span style="font-size:11px;color:#7f97b3">${dateStr}</span>
+          </div>
+          <div id="${eid}-edit" style="display:none;margin-top:8px">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div>
+                <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">Site name</label>
+                <input id="${eid}-name" value="${String(s.name||k).replace(/"/g,'&quot;')}" style="width:180px;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px">
+              </div>
+              <div>
+                <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">One-way km</label>
+                <input id="${eid}-km" type="number" min="0" value="${s.km||''}" style="width:80px;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px">
+              </div>
+              <button data-saction="save" data-key="${encodeURIComponent(k)}" data-eid="${eid}" style="background:#1a6a3a;border:none;border-radius:4px;color:#fff;padding:5px 12px;font-size:12px;cursor:pointer">Save</button>
+              <button data-saction="cancel" data-eid="${eid}" style="background:none;border:1px solid #555;border-radius:4px;color:#aaa;padding:5px 10px;font-size:12px;cursor:pointer">Cancel</button>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button data-saction="edit" data-eid="${eid}" style="background:none;border:1px solid #1a3a6a;border-radius:4px;color:#4fc3f7;padding:4px 10px;font-size:11px;cursor:pointer">Edit</button>
+          <button data-saction="delete" data-key="${encodeURIComponent(k)}" style="background:none;border:1px solid #e74c3c;border-radius:4px;color:#e74c3c;padding:4px 10px;font-size:11px;cursor:pointer">Delete</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  el.onclick = ev => {
+    const btn = ev.target.closest('[data-saction]');
+    if (!btn) return;
+    const action = btn.dataset.saction;
+    const eid = btn.dataset.eid;
+    const key = btn.dataset.key ? decodeURIComponent(btn.dataset.key) : null;
+    if (action === 'edit') {
+      document.getElementById(`${eid}-view`).style.display = 'none';
+      document.getElementById(`${eid}-edit`).style.display = 'block';
+    } else if (action === 'cancel') {
+      document.getElementById(`${eid}-view`).style.display = 'flex';
+      document.getElementById(`${eid}-edit`).style.display = 'none';
+    } else if (action === 'save') {
+      const all = getSites();
+      const entry = all[key];
+      if (entry) {
+        const newName = document.getElementById(`${eid}-name`).value.trim() || entry.name;
+        const newKm = parseFloat(document.getElementById(`${eid}-km`).value);
+        entry.name = newName;
+        if (!isNaN(newKm) && newKm >= 0) entry.km = newKm;
+        // Renaming moves the entry to its new key
+        const newKey = newName.toLowerCase();
+        if (newKey !== key) { delete all[key]; all[newKey] = entry; }
+        else all[key] = entry;
+        saveSites(all);
+      }
+      renderSitesManagerList();
+      populateSiteSuggestions();
+    } else if (action === 'delete') {
+      if (!confirm(`Delete saved site:\n"${key}"?\n\nInvoices already costed keep their own copy of the location.`)) return;
+      const all = getSites();
+      delete all[key];
+      saveSites(all);
+      renderSitesManagerList();
+      populateSiteSuggestions();
+    }
+  };
+}
+
+// Delivery destination for the invoice open in the cost modal.
+// 'office' uses the customer's cached location; 'site' uses a per-invoice
+// location that is stored on the invoice and never written to the customer cache.
+let currentDeliverTo = 'office';
+let currentSiteLoc = null;              // { lat, lng, label, km }
+
+function setDeliverTo(mode, opts) {
+  opts = opts || {};
+  currentDeliverTo = (mode === 'site') ? 'site' : 'office';
+  const isSite = currentDeliverTo === 'site';
+  const offBtn = document.getElementById('destOfficeBtn');
+  const siteBtn = document.getElementById('destSiteBtn');
+  if (offBtn)  { offBtn.style.background  = isSite ? '#0a1628' : '#0f3460'; offBtn.style.color  = isSite ? '#7f97b3' : '#fff'; }
+  if (siteBtn) { siteBtn.style.background = isSite ? '#0f3460' : '#0a1628'; siteBtn.style.color = isSite ? '#fff' : '#7f97b3'; }
+  const row = document.getElementById('siteAddrRow');
+  if (row) row.style.display = isSite ? 'flex' : 'none';
+
+  const kmEl = document.getElementById('fTransportKm');
+  const hint = document.getElementById('destHint');
+  if (!opts.keepKm) {
+    if (isSite) {
+      kmEl.value = (currentSiteLoc && currentSiteLoc.km) ? currentSiteLoc.km : '';
+    } else {
+      const cached = getTransportCache()[(currentCostCustomer || '').toLowerCase().trim()];
+      kmEl.value = cached ? cached.km : '';
+      currentTransportCoords = (cached && typeof cached.lat === 'number')
+        ? { lat: cached.lat, lng: cached.lng } : null;
+    }
+  }
+  if (hint) {
+    hint.textContent = isSite
+      ? (currentSiteLoc ? `Site set: ${currentSiteLoc.label || 'pinned'}` : 'Enter or pin the site location')
+      : 'Uses the customer’s saved location';
+  }
+  updateTransportCalc();
+}
+function getTransportCache() {
+  try { return JSON.parse(localStorage.getItem(TRANSPORT_CACHE_KEY) || '{}'); } catch(e) { return {}; }
+}
+function saveTransportCache(cache) {
+  localStorage.setItem(TRANSPORT_CACHE_KEY, JSON.stringify(cache));
+  syncSettingToFirebase('transportCache', cache);
+}
+
+// ---- Cache Manager ----
+// Coordinates picked via 📍 Map for the pending "Add New Entry" row
+let cacheNewCoords = null;
+function openCacheManager() {
+  cacheNewCoords = null;
+  renderCacheManagerList();
+  populateCacheCustomerList();
+  // Opened from an invoice's cost modal → pre-fill that customer
+  document.getElementById('cacheNewCustomer').value = currentCostCustomer || '';
+  document.getElementById('cacheNewCity').value = '';
+  document.getElementById('cacheNewKm').value = '';
+  document.getElementById('cacheManagerBg').classList.add('open');
+}
+// Customer names from existing invoices, so entries can be picked instead of typed.
+// Already-cached customers are listed last and flagged, so it's obvious which
+// ones still need a distance.
+function populateCacheCustomerList() {
+  const dl = document.getElementById('cacheCustomerSuggestions');
+  if (!dl) return;
+  const cache = getTransportCache();
+  const names = [...new Set((state.invoices || []).map(i => i.customer).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+  const uncached = names.filter(n => !cache[n.toLowerCase().trim()]);
+  const cached = names.filter(n => cache[n.toLowerCase().trim()]);
+  const esc = s => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  dl.innerHTML =
+    uncached.map(n => `<option value="${esc(n)}">`).join('') +
+    cached.map(n => `<option value="${esc(n)}" label="already cached">`).join('');
+}
+function addNewCacheEntry() {
+  const customer = document.getElementById('cacheNewCustomer').value.trim();
+  const city = document.getElementById('cacheNewCity').value.trim();
+  const km = parseFloat(document.getElementById('cacheNewKm').value) || 0;
+  if (!customer) { alert('Customer name is required.'); return; }
+  if (!km) { alert('Enter a distance in km.'); return; }
+  const cache = getTransportCache();
+  const key = customer.toLowerCase().trim();
+  if (cache[key] && !confirm(`"${customer}" is already cached at ${cache[key].km} km.\nReplace it with ${km} km?`)) return;
+  cache[key] = { km, rate: getTransportRate(), city: city || customer, cachedAt: Date.now(),
+                 ...(cacheNewCoords || {}) };
+  saveTransportCache(cache);
+  cacheNewCoords = null;
+  document.getElementById('cacheNewCustomer').value = '';
+  document.getElementById('cacheNewCity').value = '';
+  document.getElementById('cacheNewKm').value = '';
+  renderCacheManagerList();
+  populateCacheCustomerList();
+}
+function closeCacheManager() {
+  document.getElementById('cacheManagerBg').classList.remove('open');
+}
+function renderCacheManagerList() {
+  const cache = getTransportCache();
+  const keys = Object.keys(cache).sort();
+  const el = document.getElementById('cacheManagerList');
+  if (!keys.length) {
+    el.innerHTML = '<div style="color:#555;font-size:13px;text-align:center;padding:20px">No cached entries yet.</div>';
+    return;
+  }
+  el.innerHTML = keys.map((k, idx) => {
+    const e = cache[k];
+    const dateStr = e.cachedAt ? new Date(e.cachedAt).toLocaleDateString('en-MY') : '—';
+    const eid = `cm${idx}`;
+    const displayName = k.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    return `<div style="border:1px solid #1a3a6a;border-radius:6px;padding:10px 12px;margin-bottom:8px;background:#071628" data-idx="${idx}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;color:#4fc3f7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${displayName}</div>
+          <div id="${eid}-view" style="margin-top:5px;display:flex;gap:12px;flex-wrap:wrap">
+            <span style="font-size:12px;color:#e0e0e0">📍 ${e.city||'—'}</span>
+            <span style="font-size:12px;color:#5dfc8d">${e.km||'—'} km one-way</span>
+            ${typeof e.lat === 'number'
+              ? '<span style="font-size:11px;color:#5dfc8d" title="Coordinates saved — usable for trip route calculation">🗺 pinned</span>'
+              : '<span style="font-size:11px;color:#f39c12" title="No coordinates — trip route calculation can\'t use this entry">⚠ no pin</span>'}
+            <span style="font-size:11px;color:#555">${dateStr}</span>
+          </div>
+          <div id="${eid}-edit" style="display:none;margin-top:8px">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div>
+                <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">City / Area</label>
+                <input id="${eid}-city" value="${(e.city||'').replace(/"/g,'&quot;')}" style="width:130px;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px">
+              </div>
+              <div>
+                <label style="font-size:10px;color:#aaa;display:block;margin-bottom:2px">One-way km</label>
+                <input id="${eid}-km" type="number" value="${e.km||''}" min="0" style="width:80px;background:#0a1628;border:1px solid #1a3a6a;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px">
+              </div>
+              <button data-action="save" data-idx="${idx}" style="background:#1a6a3a;border:none;border-radius:4px;color:#fff;padding:5px 12px;font-size:12px;cursor:pointer">Save</button>
+              <button data-action="cancel" data-idx="${idx}" style="background:none;border:1px solid #555;border-radius:4px;color:#aaa;padding:5px 10px;font-size:12px;cursor:pointer">Cancel</button>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button data-action="edit" data-idx="${idx}" style="background:none;border:1px solid #1a3a6a;border-radius:4px;color:#4fc3f7;padding:4px 10px;font-size:11px;cursor:pointer">Edit</button>
+          <button data-action="delete" data-idx="${idx}" style="background:none;border:1px solid #e74c3c;border-radius:4px;color:#e74c3c;padding:4px 10px;font-size:11px;cursor:pointer">Delete</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Attach events via delegation — no inline onclick quoting issues
+  el.onclick = ev => {
+    const btn = ev.target.closest('[data-action]');
+    if (!btn) return;
+    const idx = parseInt(btn.dataset.idx);
+    const k = keys[idx];
+    const eid = `cm${idx}`;
+    const action = btn.dataset.action;
+    if (action === 'edit') {
+      document.getElementById(`${eid}-view`).style.display = 'none';
+      document.getElementById(`${eid}-edit`).style.display = 'block';
+    } else if (action === 'cancel') {
+      document.getElementById(`${eid}-view`).style.display = 'flex';
+      document.getElementById(`${eid}-edit`).style.display = 'none';
+    } else if (action === 'save') {
+      const cache2 = getTransportCache();
+      if (cache2[k]) {
+        cache2[k].city = document.getElementById(`${eid}-city`).value.trim();
+        cache2[k].km = parseFloat(document.getElementById(`${eid}-km`).value) || cache2[k].km;
+        saveTransportCache(cache2);
+      }
+      renderCacheManagerList();
+    } else if (action === 'delete') {
+      if (!confirm(`Delete cached distance for:\n"${k}"?`)) return;
+      const cache2 = getTransportCache();
+      delete cache2[k];
+      saveTransportCache(cache2);
+      renderCacheManagerList();
+      populateCacheCustomerList();
+    }
+  };
+}
+function initTransportCalc(customerName) {
+  currentCostCustomer = customerName || '';
+  const cached = getTransportCache()[(customerName||'').toLowerCase().trim()];
+  const kmEl = document.getElementById('fTransportKm');
+  const hintEl = document.getElementById('transportCityHint');
+  const cacheEl = document.getElementById('transportCacheInfo');
+  populateVehicleDropdowns();
+  currentTransportCoords = (cached && typeof cached.lat === 'number')
+    ? { lat: cached.lat, lng: cached.lng } : null;
+
+  // Restore this invoice's saved delivery destination
+  const inv = state.invoices.find(i => i.id === costModalId);
+  currentSiteLoc = (inv && inv.siteLocation && typeof inv.siteLocation.lat === 'number')
+    ? Object.assign({}, inv.siteLocation) : null;
+  const siteInput = document.getElementById('fSiteAddress');
+  if (siteInput) siteInput.value = currentSiteLoc ? (currentSiteLoc.label || '') : '';
+  populateSiteSuggestions();
+  const smh = document.getElementById('siteMatchHint');
+  if (smh) smh.textContent = '';
+
+  if (cached) {
+    cacheEl.textContent = `✓ Cached: ${cached.city}, ${cached.km} km` +
+      (currentTransportCoords ? ' · 📍 pinned' : ' · no map pin yet');
+    cacheEl.style.display = 'block';
+    hintEl.textContent = '';
+  } else {
+    cacheEl.style.display = 'none';
+    hintEl.textContent = 'No cached distance — click 🔍 Find, use 📍 Map, or enter km manually.';
+  }
+  // setDeliverTo fills the km field from the right source and updates the total
+  setDeliverTo((inv && inv.deliverTo === 'site') ? 'site' : 'office');
+}
+// Round-trip cost for one delivery, never below the per-invoice minimum.
+// A zero distance stays zero — the floor applies to a delivery, not to a blank field.
+function transportCostFor(km) {
+  if (!km || km <= 0) return 0;
+  const raw = Math.round(km * 2 * getTransportRate() * 100) / 100;
+  return Math.max(raw, getTransportMin());
+}
+function updateTransportCalc() {
+  const km = parseFloat(document.getElementById('fTransportKm').value) || 0;
+  const raw = Math.round(km * 2 * getTransportRate() * 100) / 100;
+  const amt = transportCostFor(km);
+  const el = document.getElementById('transportCalcAmt');
+  el.textContent = fmtRM(amt);
+  el.title = (amt > raw) ? `Raised to the RM ${getTransportMin().toFixed(2)} minimum (distance gives ${fmtRM(raw)})` : '';
+  const note = document.getElementById('transportMinNote');
+  if (note) {
+    note.textContent = (amt > raw) ? `minimum applied — distance alone gives ${fmtRM(raw)}` : '';
+    note.style.display = (amt > raw) ? 'inline' : 'none';
+  }
+}
+const MY_CITIES = [
+  'Ipoh','Taiping','Teluk Intan','Manjung','Kampar','Batu Gajah','Lumut','Bidor',
+  'Kuala Lumpur','KL','Petaling Jaya','PJ','Subang','Shah Alam','Klang','Rawang',
+  'Puchong','Cheras','Ampang','Kepong','Damansara','Kajang','Bangi','Selayang',
+  'Penang','Georgetown','Butterworth','Bayan Lepas','Kulim','Sungai Petani','Alor Setar',
+  'Johor Bahru','JB','Skudai','Batu Pahat','Muar','Kluang','Kota Tinggi',
+  'Seremban','Nilai','Port Dickson','Melaka','Malacca',
+  'Kuantan','Temerloh','Bentong','Raub',
+  'Kota Kinabalu','Sandakan','Tawau','Lahad Datu',
+  'Kuching','Miri','Sibu','Bintulu'
+];
+// ---- Shared location lookup ----
+// One cascade used by both the 🔍 Find button and Calculate Route:
+// Google Places → OpenStreetMap by company name → city embedded in the name → AI city.
+// Returns { lat, lng, label, source, approx } or null.
+async function nominatimLookup(q) {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=3&countrycodes=my`, { headers: { 'Accept-Language': 'en' } });
+    const d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+
+// One-way road distance from the office, via OSRM. null if routing fails.
+async function officeRoadKm(lat, lng) {
+  const office = getOffice();
+  try {
+    const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${office.lng},${office.lat};${lng},${lat}?overview=false`);
+    const d = await r.json();
+    if (d.code === 'Ok' && d.routes?.[0]) return Math.round(d.routes[0].distance / 100) / 10;
+  } catch(e) {}
+  return null;
+}
+
+function cityFromCompanyName(name) {
+  const paren = name.match(/\(([A-Z][A-Z\s]{1,20})\)/);
+  if (paren) return paren[1].trim();
+  const up = name.toUpperCase();
+  return MY_CITIES.find(c => up.includes(c.toUpperCase())) || null;
+}
+
+// Why the last AI lookup failed, so the UI can say more than "AI failed"
+let lastAiError = '';
+
+async function resolveCustomerLocation(name, onProgress) {
+  const say = m => { if (onProgress) onProgress(m); };
+  if (!name || !name.trim()) return null;
+  const q = name.trim();
+  lastAiError = '';
+
+  // 1. Google Places — most reliable for Malaysian businesses
+  if (getGoogleKey()) {
+    say('searching Google Places…');
+    const g = await googlePlacesSearch(q + ' Malaysia', 1);
+    if (g.results && g.results.length) {
+      const r = g.results[0];
+      return { lat: r.lat, lng: r.lon, label: r.display_name, source: '🗺 Google' };
+    }
+  }
+
+  // 2. OpenStreetMap on the full company name
+  say('searching OpenStreetMap…');
+  let hits = await nominatimLookup(q + ' Malaysia');
+  if (hits.length) {
+    return { lat: +hits[0].lat, lng: +hits[0].lon,
+             label: hits[0].display_name.split(',').slice(0, 3).join(',').trim(),
+             source: '📍 OpenStreetMap' };
+  }
+
+  // 3. City written into the company name, e.g. "(IPOH)" — city centre only
+  const nameCity = cityFromCompanyName(q);
+  if (nameCity) {
+    say(`routing to ${nameCity}…`);
+    hits = await nominatimLookup(nameCity + ', Malaysia');
+    if (hits.length) {
+      return { lat: +hits[0].lat, lng: +hits[0].lon, label: nameCity,
+               source: '📍 City from name', approx: true };
+    }
+  }
+
+  // 4. Ask Claude which city the company is in — city centre only
+  const key = getClaudeKey();
+  if (!key) {
+    lastAiError = 'no Claude API key set (👥 Users → Claude API Key)';
+    return null;
+  }
+  say('asking AI for the city…');
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-allow-browser': 'true' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 20,
+        messages: [{ role: 'user', content: `Malaysian company: "${q}". What city/town in Malaysia? Reply ONLY city and state e.g. "Ipoh, Perak". If unknown: UNKNOWN` }]
+      })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      lastAiError = (data.error && data.error.message) || `HTTP ${resp.status}`;
+      return null;
+    }
+    const city = (data.content?.[0]?.text || '').trim().replace(/^["']|["']$/g, '');
+    if (!city || /unknown/i.test(city)) { lastAiError = 'AI did not recognise this company'; return null; }
+    hits = await nominatimLookup(city + ', Malaysia');
+    if (hits.length) {
+      return { lat: +hits[0].lat, lng: +hits[0].lon, label: city, source: '🤖 AI', approx: true };
+    }
+    lastAiError = `could not map "${city}" to coordinates`;
+  } catch(e) {
+    // A thrown fetch means the request never completed — network or CORS
+    lastAiError = `request blocked (${e.message}) — the browser could not reach api.anthropic.com`;
+  }
+  return null;
+}
+
+async function lookupDistance() {
+  const btn = document.getElementById('aiEstimateBtn');
+  const hintEl = document.getElementById('transportCityHint');
+  btn.textContent = '⏳'; btn.disabled = true;
+
+  // Site deliveries search the site address; office deliveries search the customer
+  const isSite = currentDeliverTo === 'site';
+  const query = isSite ? (document.getElementById('fSiteAddress').value || '').trim() : currentCostCustomer;
+  if (isSite && !query) {
+    hintEl.textContent = 'Enter a site name or address first, or use 📍 Map to pin it.';
+    btn.textContent = '🔍 Find'; btn.disabled = false;
+    return;
+  }
+
+  hintEl.textContent = 'Searching…';
+  // A pasted coordinate pair resolves instantly, no lookup needed
+  const pasted = isSite ? parseLatLngInput(query) : null;
+  const found = pasted
+    ? { lat: pasted.lat, lng: pasted.lng, label: `${pasted.lat.toFixed(5)}, ${pasted.lng.toFixed(5)}`, source: '📍 Coordinates' }
+    : await resolveCustomerLocation(query, m => { hintEl.textContent = m; });
+  if (found) {
+    const km = await officeRoadKm(found.lat, found.lng);
+    if (km !== null) {
+      document.getElementById('fTransportKm').value = km;
+      if (isSite) {
+        currentSiteLoc = { lat: found.lat, lng: found.lng, label: found.label, km };
+        document.getElementById('destHint').textContent = `Site set: ${found.label}`;
+      } else {
+        currentTransportCoords = { lat: found.lat, lng: found.lng };
+      }
+      hintEl.textContent = `${found.source}: ${found.label} — ${km} km one-way` +
+        (found.approx ? ' (city centre — check with 📍 Map)' : '') + '. Click "+ Add to Items" to save.';
+      updateTransportCalc();
+      btn.textContent = '🔍 Find'; btn.disabled = false;
+      return;
+    }
+  }
+
+  hintEl.innerHTML = (lastAiError ? `Lookup failed — ${lastAiError}.<br>` : 'Could not determine location. ') +
+    'Click 📍 and paste the Google Maps coordinates ' +
+    '(right-click the pin in Google Maps → click the coordinates to copy), or enter km manually.';
+  btn.textContent = '🔍 Find'; btn.disabled = false;
+}
+function addTransportToCost() {
+  const km = parseFloat(document.getElementById('fTransportKm').value) || 0;
+  const rate = getTransportRate();
+  const amt = transportCostFor(km);
+  if (!amt) { alert('Enter a distance first.'); return; }
+  // Check for existing transport row and offer to replace
+  let existingRow = null;
+  document.querySelectorAll('#costItemsList .cost-item-row').forEach(row => {
+    const desc = row.querySelector('.cost-item-desc').value.trim().toLowerCase();
+    if (desc.startsWith('transport')) existingRow = row;
+  });
+  if (existingRow) {
+    const oldAmt = existingRow.querySelector('.cost-item-amt').value;
+    if (!confirm(`Existing transport entry found (RM ${oldAmt}).\nReplace with new amount (${fmtRM(amt)})?`)) return;
+    existingRow.remove();
+  }
+  const isSite = currentDeliverTo === 'site';
+  _addCostItemRow(isSite ? 'Transport (Site)' : 'Transport', amt);
+  _updateCostTotal();
+
+  if (isSite) {
+    // A site belongs to this delivery, not the customer — keep it off the customer cache
+    const label = (document.getElementById('fSiteAddress').value || '').trim() ||
+                  (currentSiteLoc && currentSiteLoc.label) || 'Site';
+    currentSiteLoc = Object.assign({}, currentSiteLoc || {}, { km, label });
+    // ...but do remember the site itself, so the next delivery there is one click
+    rememberSite(label, currentSiteLoc, km);
+    document.getElementById('transportCityHint').textContent =
+      `✓ Transport to site added — ${label}, ${km} km. Site saved for reuse.`;
+    return;
+  }
+
+  // Office delivery — cache the confirmed distance against the customer
+  const hint = document.getElementById('transportCityHint').textContent;
+  const cityMatch = hint.match(/(?:Found|found city):\s*([^—\n]+?)(?:\s*—|\s*,\s*\d)/);
+  const city = cityMatch ? cityMatch[1].trim() : currentCostCustomer;
+  const cache = getTransportCache();
+  const prev = cache[currentCostCustomer.toLowerCase().trim()] || {};
+  const coords = currentTransportCoords ||
+    (typeof prev.lat === 'number' ? { lat: prev.lat, lng: prev.lng } : null);
+  cache[currentCostCustomer.toLowerCase().trim()] =
+    { km, rate, city, cachedAt: Date.now(), ...(coords || {}) };
+  saveTransportCache(cache);
+  document.getElementById('transportCacheInfo').textContent = `✓ Cached: ${city}, ${km} km`;
+  document.getElementById('transportCacheInfo').style.display = 'block';
+  document.getElementById('transportCityHint').textContent = '✓ Transport added to cost items.';
+}
+
+// ---- Map Picker ----
+const IPOH_OFFICE = { lat: 4.5635, lng: 101.1095 }; // 18, Hala Rapat Baru 20, Kinta Jaya Light Industrial Estate, Ipoh
+function getOffice() { return IPOH_OFFICE; }
+let mapPicker = null, mapMarkerPin = null, mapPickerKm = 0, mapPickerTarget = 'transport';
+let mapPickerLat = 0, mapPickerLng = 0, mapPickerTripInvId = null;
+let mapPickerPlaceLabel = ''; // name/address of the last picked search result, if any
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+let _mapSearchResults = [];
+let _mapSearchTimeout = null;
+// Google Maps state
+let _gMapsLoaded = false, _gMapsCallbacks = [];
+let _useGoogleMap = false;
+let gMap = null, gMapMarker = null, gOfficeMarker = null, gRoutePoly = null;
+let _gLegLines = [], _gStopMarkers = [];
+
+function loadGoogleMapsAPI(cb) { cb(false); } // Not used — using REST API instead
+
+// ---- Google Maps link / coordinate parser ----
+// Accepts anything you can copy out of Google Maps:
+//   "4.593820, 101.099520"                     (right-click → copy coordinates)
+//   ".../place/X/@4.5938,101.0995,17z/...!3d4.5938!4d101.0995"
+//   "...?q=4.5938,101.0995"
+function parseLatLngInput(text) {
+  if (!text) return null;
+  const s = String(text).trim();
+  let m;
+  // Plain "lat, lng" — Google Maps right-click → copy coordinates.
+  // Requires 3+ decimals on both so half-typed input doesn't trigger a jump.
+  m = s.match(/^\s*(-?\d{1,2}\.\d{3,})\s*,\s*(-?\d{1,3}\.\d{3,})\s*$/);
+  if (m) return { lat: +m[1], lng: +m[2] };
+  // !3d<lat>!4d<lng> — the actual place pin inside a Maps URL (most accurate)
+  m = s.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+  if (m) return { lat: +m[1], lng: +m[2] };
+  // /@<lat>,<lng>,<zoom>z — map centre
+  m = s.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m) return { lat: +m[1], lng: +m[2] };
+  // ?q= / ?ll= / &destination= / &center=
+  m = s.match(/[?&](?:q|ll|daddr|destination|center)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
+  if (m) return { lat: +m[1], lng: +m[2] };
+  return null;
+}
+function isGoogleMapsShortLink(text) {
+  return /(?:maps\.app\.goo\.gl|goo\.gl\/maps)/i.test(text || '');
+}
+
+// ---- Google Places API (New) — places.googleapis.com supports browser CORS ----
+// The legacy maps.googleapis.com/maps/api/place/* endpoints do NOT send CORS
+// headers, so they can never be called from a browser. This is the replacement.
+async function googlePlacesSearch(query, limit) {
+  const key = getGoogleKey();
+  if (!key) return { error: 'no-key' };
+  try {
+    const resp = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': key,
+        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location'
+      },
+      body: JSON.stringify({ textQuery: query, regionCode: 'MY', maxResultCount: limit || 6 })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { error: (data.error && data.error.message) || `HTTP ${resp.status}` };
+    const places = data.places || [];
+    return {
+      results: places.filter(p => p.location).map(p => ({
+        lat: p.location.latitude,
+        lon: p.location.longitude,
+        display_name: ((p.displayName && p.displayName.text) || '') +
+                      (p.formattedAddress ? ' · ' + p.formattedAddress : '')
+      }))
+    };
+  } catch(e) {
+    return { error: e.message || 'network blocked' };
+  }
+}
+
+function onMapSearchInput() {
+  if (_useGoogleMap) return; // Google Autocomplete handles it
+  clearTimeout(_mapSearchTimeout);
+  _mapSearchTimeout = setTimeout(doMapSearch, 500);
+}
+
+async function doMapSearch() {
+  const q = document.getElementById('mapSearchInput').value.trim();
+  const resultsEl = document.getElementById('mapSearchResults');
+  if (!q) { resultsEl.style.display = 'none'; return; }
+  resultsEl.style.display = 'block';
+  resultsEl.innerHTML = '<div style="padding:8px 12px;color:#aaa;font-size:12px">Searching…</div>';
+
+  // ---- Path A: pasted coordinates or a Google Maps link (always works, no API) ----
+  const pasted = parseLatLngInput(q);
+  if (pasted) {
+    resultsEl.style.display = 'none';
+    document.getElementById('mapSearchInput').value = `${pasted.lat.toFixed(5)}, ${pasted.lng.toFixed(5)}`;
+    if (mapPicker) mapPicker.setView([pasted.lat, pasted.lng], 16);
+    onMapPickerClick(pasted.lat, pasted.lng);
+    return;
+  }
+  if (isGoogleMapsShortLink(q)) {
+    resultsEl.innerHTML = '<div style="padding:8px 12px;color:#f39c12;font-size:12px;line-height:1.5">' +
+      'Short links (maps.app.goo.gl) can\'t be opened from here.<br>' +
+      'Open the link in Google Maps, <strong>right-click the pin → click the coordinates</strong> to copy, then paste them here.</div>';
+    return;
+  }
+
+  // ---- Path B: Google Places API (New) — browser-callable ----
+  let googleErr = null;
+  if (getGoogleKey()) {
+    const g = await googlePlacesSearch(q + ' Malaysia');
+    if (g.results && g.results.length) {
+      _mapSearchResults = g.results;
+      resultsEl.innerHTML = _mapSearchResults.map((r, i) => {
+        const display = r.display_name.length > 100 ? r.display_name.substring(0, 100) + '…' : r.display_name;
+        return `<div onclick="selectMapSearchResult(${i})"
+          style="padding:9px 12px;border-bottom:1px solid #1a3a6a;cursor:pointer;font-size:12px;color:#e0e0e0;line-height:1.4"
+          onmouseover="this.style.background='#1a3a6a'" onmouseout="this.style.background=''">
+          🗺 ${display}
+        </div>`;
+      }).join('');
+      return;
+    }
+    if (g.error && g.error !== 'no-key') googleErr = g.error;
+  }
+
+  // ---- Path C: Nominatim fallback ----
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q + ' Malaysia')}&format=json&limit=6&countrycodes=my`;
+    const resp = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+    const data = await resp.json();
+    _mapSearchResults = data.map(r => ({ lat: parseFloat(r.lat), lon: parseFloat(r.lon), display_name: r.display_name }));
+    if (!data.length) {
+      resultsEl.innerHTML = _noResultsHelp(googleErr);
+      return;
+    }
+    resultsEl.innerHTML = data.map((r, i) => {
+      const display = r.display_name.length > 100 ? r.display_name.substring(0, 100) + '…' : r.display_name;
+      return `<div onclick="selectMapSearchResult(${i})"
+        style="padding:9px 12px;border-bottom:1px solid #1a3a6a;cursor:pointer;font-size:12px;color:#e0e0e0;line-height:1.4"
+        onmouseover="this.style.background='#1a3a6a'" onmouseout="this.style.background=''">
+        📍 ${display}
+      </div>`;
+    }).join('');
+  } catch(e) {
+    resultsEl.innerHTML = _noResultsHelp(googleErr);
+  }
+}
+
+// Shown when no search path found the place — tells the user the always-works route.
+function _noResultsHelp(googleErr) {
+  const gLine = googleErr
+    ? `<div style="color:#f39c12;margin-bottom:6px">Google Places: ${googleErr}</div>`
+    : (getGoogleKey() ? '' : '<div style="color:#888;margin-bottom:6px">No Google API key set (👥 Users → Google API Key).</div>');
+  return `<div style="padding:10px 12px;font-size:12px;color:#e0e0e0;line-height:1.6">
+    ${gLine}
+    <div style="color:#888;margin-bottom:6px">Not found by name.</div>
+    <strong style="color:#4fc3f7">Always works:</strong> open the place in Google Maps →
+    right-click the pin → click the coordinates to copy → paste them in this box.
+  </div>`;
+}
+
+function selectMapSearchResult(i) {
+  const r = _mapSearchResults[i];
+  if (!r) return;
+  document.getElementById('mapSearchResults').style.display = 'none';
+  document.getElementById('mapSearchInput').value = r.display_name.split(',').slice(0, 3).join(', ');
+  const lat = parseFloat(r.lat), lng = parseFloat(r.lon);
+  if (_useGoogleMap && gMap) { gMap.panTo({ lat, lng }); gMap.setZoom(16); }
+  else if (mapPicker) mapPicker.setView([lat, lng], 16);
+  onMapPickerClick(lat, lng, r.display_name);
+}
+
+let officeMarker = null;
+let mapPickerMode = 'pick'; // 'pick' or 'route'
+let _lastTripLegs = null;
+const LEG_COLORS = ['#e74c3c','#f39c12','#2ecc71','#3498db','#9b59b6','#1abc9c','#e67e22'];
+
+function _destroyLeaflet() {
+  if (mapPicker) { try { mapPicker.remove(); } catch(e) {} mapPicker = null; officeMarker = null; }
+  const el = document.getElementById('mapPickerEl'); if (el) el.innerHTML = '';
+}
+function _destroyGMap() {
+  _clearMapOverlays();
+  if (gOfficeMarker) { gOfficeMarker.setMap(null); gOfficeMarker = null; }
+  gMap = null;
+}
+
+function _initMapPicker() {
+  const office = getOffice();
+  if (_useGoogleMap) {
+    _destroyLeaflet();
+    gMap = new google.maps.Map(document.getElementById('mapPickerEl'), {
+      center: { lat: office.lat, lng: office.lng }, zoom: 12,
+      mapTypeControl: false, streetViewControl: false, fullscreenControl: false, gestureHandling: 'greedy'
+    });
+    gOfficeMarker = new google.maps.Marker({ position: { lat: office.lat, lng: office.lng }, map: gMap, title: 'Ipoh Hydrotech Office' });
+    gMap.addListener('click', e => onMapPickerClick(e.latLng.lat(), e.latLng.lng()));
+    const searchInput = document.getElementById('mapSearchInput');
+    searchInput.placeholder = 'Search company or address…';
+    const ac = new google.maps.places.Autocomplete(searchInput, { componentRestrictions: { country: 'my' } });
+    ac.addListener('place_changed', () => {
+      const place = ac.getPlace();
+      if (!place.geometry?.location) return;
+      gMap.panTo(place.geometry.location); gMap.setZoom(16);
+      document.getElementById('mapSearchResults').style.display = 'none';
+      onMapPickerClick(place.geometry.location.lat(), place.geometry.location.lng());
+    });
+  } else {
+    _destroyGMap();
+    if (mapPicker) { try { mapPicker.remove(); } catch(e) {} mapPicker = null; }
+    mapPicker = L.map('mapPickerEl').setView([office.lat, office.lng], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors', maxZoom: 19 }).addTo(mapPicker);
+    officeMarker = L.marker([office.lat, office.lng], {
+      icon: L.divIcon({ html: '<div style="font-size:22px;line-height:1">🏢</div>', className: '', iconSize:[24,24], iconAnchor:[12,12] })
+    }).addTo(mapPicker).bindTooltip('Ipoh Hydrotech Office', { permanent: false, direction: 'top' });
+    mapPicker.on('click', e => onMapPickerClick(e.latlng.lat, e.latlng.lng));
+  }
+}
+
+function _clearMapOverlays() {
+  if (_useGoogleMap) {
+    if (gMapMarker) { gMapMarker.setMap(null); gMapMarker = null; }
+    if (gRoutePoly) { gRoutePoly.setMap(null); gRoutePoly = null; }
+    _gLegLines.forEach(l => l.setMap(null)); _gLegLines = [];
+    _gStopMarkers.forEach(m => m.setMap(null)); _gStopMarkers = [];
+  } else {
+    if (mapMarkerPin) { mapMarkerPin.remove(); mapMarkerPin = null; }
+    if (mapPicker?._routeLine) { mapPicker._routeLine.remove(); mapPicker._routeLine = null; }
+    (mapPicker?._legLines || []).forEach(l => l.remove()); if (mapPicker) mapPicker._legLines = [];
+    (mapPicker?._stopMarkers || []).forEach(m => m.remove()); if (mapPicker) mapPicker._stopMarkers = [];
+  }
+}
+
+function openMapPicker(target) {
+  mapPickerTarget = target || 'transport';
+  mapPickerMode = 'pick';
+  mapPickerKm = 0;
+  document.getElementById('mapPickerTitle').textContent = '📍 Set Delivery Location';
+  document.getElementById('mapPickerSubtitle').textContent = 'Search by address/area, or click the map to drop a pin';
+  document.getElementById('mapPickerInfo').textContent = 'No location selected';
+  document.getElementById('mapPickerDist').textContent = '';
+  document.getElementById('mapPickerConfirmBtn').disabled = true;
+  document.getElementById('mapPickerConfirmBtn').style.display = '';
+  document.getElementById('mapPickerMyLocBtn').style.display = '';
+  document.getElementById('mapSearchBar').style.display = '';
+  document.getElementById('mapSearchInput').value = '';
+  document.getElementById('mapSearchResults').style.display = 'none';
+  document.getElementById('mapPickerBg').classList.add('open');
+  setTimeout(() => {
+    _useGoogleMap = false;
+    if (!mapPicker) { _initMapPicker(); } else { _clearMapOverlays(); }
+    mapPicker.invalidateSize();
+  }, 150);
+}
+
+async function onMapPickerClick(lat, lng, placeLabel) {
+  if (mapPickerMode === 'route') return;
+  mapPickerLat = lat; mapPickerLng = lng;
+  mapPickerPlaceLabel = placeLabel || '';
+  _clearMapOverlays();
+  if (_useGoogleMap) {
+    gMapMarker = new google.maps.Marker({ position: { lat, lng }, map: gMap });
+  } else {
+    mapMarkerPin = L.marker([lat, lng]).addTo(mapPicker);
+  }
+  document.getElementById('mapPickerInfo').textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  document.getElementById('mapPickerDist').textContent = 'Calculating road distance…';
+  document.getElementById('mapPickerConfirmBtn').disabled = true;
+  const office = getOffice();
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${office.lng},${office.lat};${lng},${lat}?overview=full&geometries=geojson`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (data.code === 'Ok' && data.routes.length) {
+      const route = data.routes[0];
+      mapPickerKm = Math.round(route.distance / 100) / 10;
+      const mins = Math.round(route.duration / 60);
+      document.getElementById('mapPickerDist').textContent = `${mapPickerKm} km one-way · ~${mins} min`;
+      if (_useGoogleMap) {
+        const path = route.geometry.coordinates.map(([ln, la]) => ({ lat: la, lng: ln }));
+        gRoutePoly = new google.maps.Polyline({ path, map: gMap, strokeColor: '#5dfc8d', strokeWeight: 4, strokeOpacity: 0.8 });
+      } else {
+        mapPicker._routeLine = L.geoJSON(route.geometry, { style: { color:'#5dfc8d', weight:3, opacity:0.8 } }).addTo(mapPicker);
+      }
+    } else throw new Error('No route');
+  } catch(e) {
+    mapPickerKm = Math.round(haversineKm(office.lat, office.lng, lat, lng) * 1.35);
+    document.getElementById('mapPickerDist').textContent = `≈ ${mapPickerKm} km one-way (estimated)`;
+    if (!_useGoogleMap && mapPicker) mapPicker._routeLine = L.polyline([[office.lat,office.lng],[lat,lng]], { color:'#f39c12', weight:2, dashArray:'6,4', opacity:0.7 }).addTo(mapPicker);
+  }
+  document.getElementById('mapPickerConfirmBtn').disabled = false;
+}
+
+function useMyLocation() {
+  if (!navigator.geolocation) { alert('Geolocation not supported by your browser.'); return; }
+  document.getElementById('mapPickerInfo').textContent = 'Getting your location…';
+  navigator.geolocation.getCurrentPosition(pos => {
+    const lat = pos.coords.latitude, lng = pos.coords.longitude;
+    if (_useGoogleMap && gMap) { gMap.panTo({ lat, lng }); gMap.setZoom(16); }
+    else if (mapPicker) mapPicker.setView([lat, lng], 16);
+    onMapPickerClick(lat, lng);
+  }, () => {
+    document.getElementById('mapPickerInfo').textContent = 'Could not get location. Click the map manually.';
+  });
+}
+
+function confirmMapLocation() {
+  if (mapPickerTarget === 'transport') {
+    document.getElementById('fTransportKm').value = mapPickerKm;
+    currentTransportCoords = { lat: mapPickerLat, lng: mapPickerLng };
+    document.getElementById('transportCityHint').textContent = `📍 Location set from map: ~${mapPickerKm} km (one-way road estimate)`;
+    updateTransportCalc();
+  } else if (mapPickerTarget === 'trip') {
+    document.getElementById('fTripTotalKm').value = mapPickerKm;
+    document.getElementById('tripRouteHint').textContent = `📍 Distance set from map: ~${mapPickerKm} km`;
+    updateTripShare();
+  } else if (mapPickerTarget === 'tripInv' && mapPickerTripInvId) {
+    const label = document.getElementById('mapPickerInfo').textContent;
+    tripInvLocations[mapPickerTripInvId] = { lat: mapPickerLat, lng: mapPickerLng, label, km: mapPickerKm };
+    // Remember it against the customer so future trips route without re-pinning
+    const inv = state.invoices.find(i => i.id === mapPickerTripInvId);
+    if (inv && inv.customer) {
+      const cache = getTransportCache();
+      const key = inv.customer.toLowerCase().trim();
+      const prev = cache[key] || {};
+      cache[key] = { ...prev, km: mapPickerKm, lat: mapPickerLat, lng: mapPickerLng,
+                     rate: prev.rate || getTransportRate(),
+                     city: prev.city || inv.customer, cachedAt: Date.now() };
+      saveTransportCache(cache);
+    }
+    renderTripRouteOrder();
+  } else if (mapPickerTarget === 'site') {
+    const label = mapPickerPlaceLabel ||
+                  (document.getElementById('fSiteAddress').value || '').trim() ||
+                  `${mapPickerLat.toFixed(5)}, ${mapPickerLng.toFixed(5)}`;
+    currentSiteLoc = { lat: mapPickerLat, lng: mapPickerLng, label, km: mapPickerKm };
+    document.getElementById('fSiteAddress').value = label;
+    document.getElementById('fTransportKm').value = mapPickerKm;
+    document.getElementById('destHint').textContent = `Site set: ${label}`;
+    document.getElementById('transportCityHint').textContent =
+      `📍 Site location set — ~${mapPickerKm} km one-way. Click "+ Add to Items" to save.`;
+    updateTransportCalc();
+  } else if (mapPickerTarget === 'cache') {
+    document.getElementById('cacheNewKm').value = mapPickerKm;
+    cacheNewCoords = { lat: mapPickerLat, lng: mapPickerLng };
+    // Fill City / Area from the picked place if the user left it blank
+    const cityEl = document.getElementById('cacheNewCity');
+    if (!cityEl.value.trim() && mapPickerPlaceLabel) {
+      const labelUp = mapPickerPlaceLabel.toUpperCase();
+      const hit = MY_CITIES.find(c => labelUp.includes(c.toUpperCase()));
+      if (hit) cityEl.value = hit;
+    }
+  }
+  closeMapPicker();
+}
+
+// Map picker for a site delivery — seeded with whatever site text is typed.
+function openMapPickerForSite() {
+  const typed = (document.getElementById('fSiteAddress').value || '').trim();
+  openMapPicker('site');
+  document.getElementById('mapPickerTitle').textContent = '🏗 Set Site Location';
+  setTimeout(() => {
+    if (currentSiteLoc && typeof currentSiteLoc.lat === 'number') {
+      if (mapPicker) mapPicker.setView([currentSiteLoc.lat, currentSiteLoc.lng], 15);
+      onMapPickerClick(currentSiteLoc.lat, currentSiteLoc.lng, currentSiteLoc.label);
+    } else if (typed) {
+      document.getElementById('mapSearchInput').value = typed;
+      doMapSearch();
+    }
+  }, 300);
+}
+
+// Map picker launched from the cache manager's "Add New Entry" row.
+// Pre-seeds the search with whatever customer name has been typed.
+function openMapPickerForCache() {
+  const name = document.getElementById('cacheNewCustomer').value.trim();
+  openMapPicker('cache');
+  document.getElementById('mapPickerTitle').textContent = '📍 Find Customer Location';
+  if (name) {
+    setTimeout(() => {
+      document.getElementById('mapSearchInput').value = name;
+      doMapSearch();
+    }, 250);
+  }
+}
+
+function openMapPickerForTripInv(invId) {
+  mapPickerTripInvId = invId;
+  // Pre-clear any existing pin so map feels fresh for this stop
+  openMapPicker('tripInv');
+  // If already has a location, pan to it after map opens
+  const existing = tripInvLocations[invId];
+  if (existing) {
+    setTimeout(() => {
+      if (_useGoogleMap && gMap) { gMap.panTo({ lat: existing.lat, lng: existing.lng }); gMap.setZoom(15); }
+      else if (mapPicker) mapPicker.setView([existing.lat, existing.lng], 15);
+      onMapPickerClick(existing.lat, existing.lng);
+    }, 350);
+  }
+}
+
+function closeMapPicker() {
+  document.getElementById('mapPickerBg').classList.remove('open');
+  mapPickerMode = 'pick';
+}
+
+async function showTripRouteOnMap() {
+  if (!_lastTripLegs || !_lastTripLegs.stopLocations.length) return;
+  const office = getOffice();
+  const allStops = [office, ..._lastTripLegs.stopLocations, office];
+
+  mapPickerMode = 'route';
+  document.getElementById('mapPickerTitle').textContent = '🗺 Trip Route Preview';
+  document.getElementById('mapPickerSubtitle').textContent = `${_lastTripLegs.stopLocations.length} stop(s) — fetching road segments…`;
+  document.getElementById('mapPickerInfo').textContent = '';
+  document.getElementById('mapPickerDist').textContent = '';
+  document.getElementById('mapPickerConfirmBtn').style.display = 'none';
+  document.getElementById('mapPickerMyLocBtn').style.display = 'none';
+  document.getElementById('mapSearchBar').style.display = 'none';
+  document.getElementById('mapSearchResults').style.display = 'none';
+  document.getElementById('mapPickerBg').classList.add('open');
+
+  const doRoute = async () => {
+    const needReinit = (_useGoogleMap && !gMap) || (!_useGoogleMap && !mapPicker);
+    if (needReinit) { _initMapPicker(); } else { _clearMapOverlays(); }
+    if (_useGoogleMap && gMap) google.maps.event.trigger(gMap, 'resize');
+    else if (mapPicker) mapPicker.invalidateSize();
+
+    const gBounds = _useGoogleMap ? new google.maps.LatLngBounds() : null;
+    const lBounds = !_useGoogleMap ? L.latLngBounds() : null;
+
+    for (let i = 0; i < allStops.length - 1; i++) {
+      const from = allStops[i], to = allStops[i + 1];
+      const color = LEG_COLORS[i % LEG_COLORS.length];
+      try {
+        const resp = await fetch(`https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`);
+        const data = await resp.json();
+        if (data.code === 'Ok' && data.routes.length) {
+          if (_useGoogleMap) {
+            const path = data.routes[0].geometry.coordinates.map(([ln, la]) => ({ lat: la, lng: ln }));
+            const poly = new google.maps.Polyline({ path, map: gMap, strokeColor: color, strokeWeight: 5, strokeOpacity: 0.85 });
+            _gLegLines.push(poly); path.forEach(p => gBounds.extend(p));
+          } else {
+            const line = L.geoJSON(data.routes[0].geometry, { style: { color, weight:5, opacity:0.85 } }).addTo(mapPicker);
+            mapPicker._legLines.push(line); lBounds.extend(line.getBounds());
+          }
+        }
+      } catch(e) {
+        if (_useGoogleMap) {
+          const poly = new google.maps.Polyline({ path: [{ lat:from.lat, lng:from.lng }, { lat:to.lat, lng:to.lng }], map: gMap, strokeColor: color, strokeWeight: 3, strokeOpacity: 0.7 });
+          _gLegLines.push(poly);
+        } else {
+          const line = L.polyline([[from.lat,from.lng],[to.lat,to.lng]], { color, weight:3, dashArray:'6,4' }).addTo(mapPicker);
+          mapPicker._legLines.push(line);
+        }
+      }
+    }
+
+    // Office marker
+    if (_useGoogleMap) {
+      const om = new google.maps.Marker({ position: { lat: office.lat, lng: office.lng }, map: gMap, title: 'Ipoh Hydrotech (start/end)' });
+      _gStopMarkers.push(om); gBounds.extend({ lat: office.lat, lng: office.lng });
+    } else {
+      const offIcon = L.divIcon({ html: '<div style="font-size:22px;line-height:1">🏢</div>', className:'', iconSize:[24,24], iconAnchor:[12,12] });
+      const om = L.marker([office.lat, office.lng], { icon: offIcon }).addTo(mapPicker).bindTooltip('Ipoh Hydrotech (start/end)', { direction:'top' });
+      mapPicker._stopMarkers.push(om); lBounds.extend([office.lat, office.lng]);
+    }
+
+    // Numbered stop markers
+    _lastTripLegs.stopLocations.forEach((loc, i) => {
+      const inv = state.invoices.find(inv => inv.id === _lastTripLegs.stopIds[i]);
+      const label = inv ? inv.customer : `Stop ${i+1}`;
+      const color = LEG_COLORS[i % LEG_COLORS.length];
+      if (_useGoogleMap) {
+        const m = new google.maps.Marker({ position: { lat: loc.lat, lng: loc.lng }, map: gMap, title: label,
+          label: { text: String(i+1), color: '#fff', fontWeight: 'bold', fontSize: '12px' },
+          icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 14 }
+        });
+        _gStopMarkers.push(m); gBounds.extend({ lat: loc.lat, lng: loc.lng });
+      } else {
+        const icon = L.divIcon({ html: `<div style="background:${color};color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,0.5)">${i+1}</div>`, className:'', iconSize:[24,24], iconAnchor:[12,12] });
+        const m = L.marker([loc.lat, loc.lng], { icon }).addTo(mapPicker).bindTooltip(label, { direction:'top' });
+        mapPicker._stopMarkers.push(m); lBounds.extend([loc.lat, loc.lng]);
+      }
+    });
+
+    if (_useGoogleMap && gBounds && !gBounds.isEmpty()) gMap.fitBounds(gBounds, { padding: 40 });
+    else if (!_useGoogleMap && lBounds && lBounds.isValid()) mapPicker.fitBounds(lBounds, { padding:[30,30] });
+    document.getElementById('mapPickerSubtitle').textContent = `${_lastTripLegs.stopLocations.length} stop(s) shown. Each color = one road segment.`;
+  };
+
+  setTimeout(() => { _useGoogleMap = false; doRoute(); }, 200);
+}
+
 function openCostView(id) {
   const inv = state.invoices.find(i => i.id === id);
   if (!inv) return;
@@ -2390,8 +4164,50 @@ function saveCostModal() {
   document.querySelectorAll('#costItemsList .cost-item-row').forEach(row => {
     const desc = row.querySelector('.cost-item-desc').value.trim();
     const amt = parseFloat(String(row.querySelector('.cost-item-amt').value).replace(/,/g, ''));
-    if (!isNaN(amt) && amt > 0) items.push({desc, amount: amt});
+    if (!isNaN(amt) && amt > 0) {
+      const item = { desc, amount: amt };
+      if (row.dataset.tripId) item.tripId = row.dataset.tripId;
+      items.push(item);
+    }
   });
+
+  // Delivery trip: calculate share and apply to other invoices
+  const tripEnabled = document.getElementById('tripEnabled').checked;
+  if (tripEnabled) {
+    const checkedBoxes = document.querySelectorAll('.trip-inv-cb:checked');
+    const tripInvIds = Array.from(checkedBoxes).map(cb => cb.dataset.id).filter(id => id !== costModalId);
+    const currentShare = tripInvShares[costModalId];
+    if (currentShare && currentShare.amount > 0) {
+      const tripId = uid();
+      items.push({ desc: 'Transport (Shared Trip)', amount: currentShare.amount, tripId });
+      const hasExisting = tripInvIds.some(tid => {
+        const tInv = state.invoices.find(i => i.id === tid);
+        return tInv && (tInv.costItems||[]).some(it => it.desc.toLowerCase().startsWith('transport') && !it.desc.includes('Shared Trip'));
+      });
+      if (hasExisting && !confirm('One or more selected invoices already have a Transport cost entry.\nContinue? The shared trip cost will be added alongside existing entries.')) return;
+      const appliedTo = [];
+      tripInvIds.forEach(tid => {
+        const tInv = state.invoices.find(i => i.id === tid);
+        if (!tInv) return;
+        const tShare = tripInvShares[tid];
+        if (!tShare || tShare.amount <= 0) return;
+        if (!Array.isArray(tInv.costItems)) tInv.costItems = [];
+        tInv.costItems = tInv.costItems.filter(it => !it.desc.includes('Shared Trip'));
+        tInv.costItems.push({ desc: 'Transport (Shared Trip)', amount: tShare.amount, tripId });
+        tInv.cost = tInv.costItems.reduce((s, i) => s + i.amount, 0);
+        tInv.updatedAt = Date.now();
+        appliedTo.push(`${tInv.invoiceNo||tInv.id} — ${fmtRM(tShare.amount)} (${Math.round(tShare.ratio*100)}%)`);
+      });
+      if (appliedTo.length) {
+        setTimeout(() => alert(`✓ Transport split applied (distance-based):\n• ${inv.invoiceNo} — ${fmtRM(currentShare.amount)} (${Math.round(currentShare.ratio*100)}%)\n• ${appliedTo.join('\n• ')}`), 100);
+      }
+    }
+  }
+
+  // Delivery destination lives on the invoice — a site is per-delivery, not per-customer
+  inv.deliverTo = currentDeliverTo;
+  if (currentSiteLoc && typeof currentSiteLoc.lat === 'number') inv.siteLocation = currentSiteLoc;
+
   inv.costItems = items;
   inv.cost = items.reduce((s, i) => s + i.amount, 0);
   inv.updatedAt = Date.now();
@@ -3766,6 +5582,16 @@ function renderUserMgmt() {
         <button onclick="saveClaudeApiKey()" style="background:#8e44ad;border:none;color:#fff;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap">Save Key</button>
       </div>
       <div style="font-size:11px;color:#555;margin-top:6px">${maskedKey ? '✓ Key configured — all staff can scan invoices.' : 'No key set — paste your Claude API key (sk-ant-...) to enable scanning for all staff.'}</div>
+    </div>
+    <div style="margin-bottom:16px;padding:12px;background:#0f3460;border-radius:8px;border:1px solid #1a3a5c">
+      <div style="font-size:11px;color:#aaa;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🗺 Google API Key (Distance Lookup)</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="text" id="googleKeyInput" placeholder="AIzaSy..."
+          value="${getGoogleKey() ? '••••••••' + getGoogleKey().slice(-4) : ''}"
+          style="flex:1;min-width:180px;background:#1a1a2e;border:1px solid #333;color:#fff;border-radius:6px;padding:7px 10px;font-size:13px">
+        <button onclick="saveGoogleApiKey()" style="background:#1a73e8;border:none;color:#fff;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap">Save Key</button>
+      </div>
+      <div style="font-size:11px;color:#555;margin-top:6px">${getGoogleKey() ? '✓ Google Places enabled — distance lookup active.' : 'Enables accurate distance lookup by company name.'}</div>
     </div>` : '';
 
   content.innerHTML = botSection + `<table class="user-table">
@@ -4291,6 +6117,8 @@ function setupBackToTop() {
 // ── Invoice Scanner ──────────────────────────────────────────
 const CLAUDE_KEY_STORE = 'iht_claude_key';
 function getClaudeKey() { return appSettings.claudeApiKey || localStorage.getItem(CLAUDE_KEY_STORE) || ''; }
+const GOOGLE_KEY_STORE = 'iht_google_key';
+function getGoogleKey() { return appSettings.googleApiKey || localStorage.getItem(GOOGLE_KEY_STORE) || ''; }
 
 function openScanInvoice() {
   if (!session || session.role !== 'account') return;
@@ -4311,6 +6139,16 @@ async function saveApiKeyAndScan() {
   setTimeout(() => document.getElementById('scanFileInput').click(), 150);
 }
 
+async function saveGoogleApiKey() {
+  const inp = document.getElementById('googleKeyInput');
+  const key = inp ? inp.value.trim() : '';
+  if (!key || key.startsWith('•')) { alert('Please paste your full Google API key.'); return; }
+  appSettings.googleApiKey = key;
+  localStorage.setItem(GOOGLE_KEY_STORE, key);
+  syncSettingToFirebase('googleApiKey', key);
+  alert('Google API key saved. Distance lookup will now use Google Places.');
+  renderUserMgmt();
+}
 async function saveClaudeApiKey() {
   const inp = document.getElementById('claudeKeyInput');
   const key = inp ? inp.value.trim() : '';

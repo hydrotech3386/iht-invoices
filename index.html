@@ -762,6 +762,22 @@
   </div>
 </div>
 
+<!-- Handling Fees Modal -->
+<div class="modal-bg" id="handlingRatesBg" style="z-index:9600">
+  <div class="modal" style="max-width:460px;padding:0;overflow:hidden">
+    <div style="padding:12px 16px;border-bottom:1px solid #1a3a6a;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-weight:700;font-size:15px;color:#fff">🏋 Handling Fees</div>
+      <button onclick="closeHandlingRatesModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:20px;line-height:1">✕</button>
+    </div>
+    <div style="padding:8px 14px 4px;font-size:11px;color:#888">Fee per pump for each category. Changes apply to new entries immediately; invoices already saved keep the amount they were costed at.</div>
+    <div id="handlingRatesList" style="max-height:380px;overflow-y:auto;padding:6px 14px 10px"></div>
+    <div style="padding:8px 16px 10px;border-top:1px solid #1a3a6a;display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn-cancel" onclick="closeHandlingRatesModal()">Cancel</button>
+      <button class="btn-confirm" onclick="saveHandlingRatesModal()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Saved Sites Modal -->
 <div class="modal-bg" id="sitesManagerBg" style="z-index:9500">
   <div class="modal" style="max-width:560px;padding:0;overflow:hidden">
@@ -902,6 +918,17 @@
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
       <span style="font-size:12px;color:#aaa">Round trip cost: <strong id="transportCalcAmt" style="color:#f39c12">RM 0.00</strong> <span id="transportMinNote" style="font-size:10px;color:#7f97b3;display:none"></span></span>
       <button class="btn-confirm" style="padding:5px 12px;font-size:12px" onclick="addTransportToCost()">+ Add to Items</button>
+    </div>
+    <div class="section-divider" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
+      <span>Handling Fee</span>
+      <button onclick="openHandlingRatesModal()" style="background:none;border:none;color:#4fc3f7;font-size:11px;cursor:pointer;padding:0;text-decoration:underline">Edit Fees</button>
+    </div>
+    <div style="font-size:11px;color:#7f97b3;margin-bottom:6px">Per pump, by category — covers loading and unloading on top of transport.</div>
+    <div id="handlingRows" style="display:flex;flex-direction:column;gap:5px;margin-bottom:6px"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <button class="btn-re" style="padding:5px 10px;font-size:12px" onclick="addHandlingRow()">+ Add pump</button>
+      <span style="font-size:12px;color:#aaa">Handling total: <strong id="handlingCalcAmt" style="color:#f39c12">RM 0.00</strong></span>
+      <button class="btn-confirm" style="padding:5px 12px;font-size:12px" onclick="addHandlingToCost()">+ Add to Items</button>
     </div>
     <div class="section-divider" style="margin-top:14px">Delivery Trip</div>
     <div style="margin-bottom:10px">
@@ -1661,6 +1688,9 @@ function onLoggedIn() {
         localStorage.setItem(TRANSPORT_CACHE_KEY, JSON.stringify(appSettings.transportCache));
       }
       // Sync saved delivery sites from Firebase → localStorage
+      if (Array.isArray(appSettings.handlingFees) && appSettings.handlingFees.length) {
+        localStorage.setItem(HANDLING_KEY, JSON.stringify(appSettings.handlingFees));
+      }
       if (appSettings.sites) {
         localStorage.setItem(SITES_KEY, JSON.stringify(appSettings.sites));
       }
@@ -2561,6 +2591,7 @@ function openCostModal(id) {
   _updateCostTotal();
   populateVehicleDropdowns();
   initTransportCalc(inv.customer);
+  initHandling(inv);
   document.getElementById('costModalBg').classList.add('open');
   setTimeout(() => { const f = list.querySelector('.cost-item-desc'); if (f) f.focus(); }, 100);
 }
@@ -2630,6 +2661,8 @@ function closeCostModal() {
   // Clear the destination so it cannot leak into the next invoice opened
   currentDeliverTo = 'office';
   currentSiteLoc = null;
+  currentHandling = [];
+  renderHandlingRows();
   currentTransportCoords = null;
   document.getElementById('fSiteAddress').value = '';
   document.getElementById('destHint').textContent = '';
@@ -3067,6 +3100,143 @@ let currentCostCustomer = '';
 // Coordinates of the location found/picked for the current customer, so they
 // can be cached alongside the km and reused for multi-stop route calculation.
 let currentTransportCoords = null;
+
+// ---- Handling fees ----
+// A fee per pump by category, charged on top of transport. The category
+// list and fees are shared settings; each invoice stores what was picked.
+const HANDLING_KEY = 'iht_handling_fees';
+const HANDLING_DEFAULTS = [
+  { id: 'domestic', name: 'Domestic / UPS / Small Box Pump', short: 'Domestic',    fee: 5 },
+  { id: 'cm',       name: 'CM / CME',                        short: 'CM/CME',      fee: 5 },
+  { id: 'cr1',      name: 'CR1 / CR3 / CR5',                 short: 'CR1-5',       fee: 10 },
+  { id: 'cr10',     name: 'CR10 / CR15 / CR20',              short: 'CR10-20',     fee: 20 },
+  { id: 'cr32',     name: 'CR32 / CR45 / CR64 / CR90',       short: 'CR32-90',     fee: 30 },
+  { id: 'cr125',    name: 'CR125 / CR150',                   short: 'CR125/150',   fee: 50 },
+  { id: 'sp2',      name: 'SP / Submersible (up to 2.2 kW)', short: 'SP ≤2.2kW',   fee: 10 },
+  { id: 'sp11',     name: 'SP / Submersible (3 – 11 kW)',    short: 'SP 3-11kW',   fee: 20 },
+  { id: 'sp22',     name: 'SP / Submersible (13 – 22 kW)',   short: 'SP 13-22kW',  fee: 30 },
+  { id: 'sp45',     name: 'SP / Submersible (30 – 45 kW)',   short: 'SP 30-45kW',  fee: 50 },
+  { id: 'nk',       name: 'NB / NK / NKG / LS',              short: 'NB/NK/LS',    fee: 80 },
+  { id: 'mpc',      name: 'Hydro MPC / Booster Set',         short: 'MPC/Booster', fee: 150 },
+];
+function getHandlingFees() {
+  try {
+    const s = JSON.parse(localStorage.getItem(HANDLING_KEY) || 'null');
+    if (Array.isArray(s) && s.length) return s;
+  } catch (e) {}
+  return HANDLING_DEFAULTS.map(c => Object.assign({}, c));
+}
+function saveHandlingFees(list) {
+  localStorage.setItem(HANDLING_KEY, JSON.stringify(list));
+  syncSettingToFirebase('handlingFees', list);
+}
+function handlingCat(id) { return getHandlingFees().find(c => c.id === id) || null; }
+
+// Pumps picked for the invoice open in the cost modal: [{ cat, qty }]
+let currentHandling = [];
+
+function initHandling(inv) {
+  currentHandling = Array.isArray(inv && inv.handling)
+    ? inv.handling.filter(h => h && h.cat && h.qty > 0).map(h => ({ cat: h.cat, qty: Number(h.qty) }))
+    : [];
+  renderHandlingRows();
+}
+function addHandlingRow() {
+  const cats = getHandlingFees();
+  currentHandling.push({ cat: cats[0] ? cats[0].id : '', qty: 1 });
+  renderHandlingRows();
+}
+function removeHandlingRow(i) {
+  currentHandling.splice(i, 1);
+  renderHandlingRows();
+}
+function onHandlingChange(i, field, val) {
+  if (!currentHandling[i]) return;
+  if (field === 'qty') currentHandling[i].qty = Math.max(1, parseInt(val, 10) || 1);
+  else currentHandling[i].cat = val;
+  renderHandlingRows();
+}
+function handlingTotal() {
+  return currentHandling.reduce((s, h) => {
+    const c = handlingCat(h.cat);
+    return s + (c ? c.fee * h.qty : 0);
+  }, 0);
+}
+function renderHandlingRows() {
+  const el = document.getElementById('handlingRows');
+  if (!el) return;
+  const cats = getHandlingFees();
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  if (!currentHandling.length) {
+    el.innerHTML = '<div style="color:#7f97b3;font-size:12px;font-style:italic;padding:4px 2px">No pumps added — click + Add pump.</div>';
+  } else {
+    el.innerHTML = currentHandling.map((h, i) => {
+      const c = handlingCat(h.cat);
+      const line = c ? c.fee * h.qty : 0;
+      const opts = cats.map(x => `<option value="${esc(x.id)}" ${x.id === h.cat ? 'selected' : ''}>${esc(x.name)} — RM ${x.fee}</option>`).join('');
+      return `<div style="display:flex;align-items:center;gap:6px">
+        <select onchange="onHandlingChange(${i},'cat',this.value)" style="flex:1;min-width:0;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:6px 8px;font-size:12px">${opts}</select>
+        <span style="color:#7f97b3;font-size:11px;flex-shrink:0">×</span>
+        <input type="number" min="1" value="${h.qty}" onchange="onHandlingChange(${i},'qty',this.value)" style="width:52px;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:6px 6px;font-size:12px;text-align:center;flex-shrink:0">
+        <span style="color:#5dfc8d;font-size:12px;font-weight:600;min-width:72px;text-align:right;flex-shrink:0">${fmtRM(line)}</span>
+        <button onclick="removeHandlingRow(${i})" title="Remove" style="background:none;border:none;color:#e74c3c;cursor:pointer;padding:0 4px;font-size:13px;line-height:1;flex-shrink:0">✕</button>
+      </div>`;
+    }).join('');
+  }
+  const tot = document.getElementById('handlingCalcAmt');
+  if (tot) tot.textContent = fmtRM(handlingTotal());
+}
+// One "Handling" cost line carrying the breakdown, e.g. "Handling (2× CR10-20, 1× NB/NK/LS)"
+function handlingDescription() {
+  const parts = currentHandling.map(h => {
+    const c = handlingCat(h.cat);
+    return c ? `${h.qty}× ${c.short || c.name}` : null;
+  }).filter(Boolean);
+  return parts.length ? `Handling (${parts.join(', ')})` : 'Handling';
+}
+function addHandlingToCost() {
+  const amt = Math.round(handlingTotal() * 100) / 100;
+  if (!amt) { alert('Add at least one pump first.'); return; }
+  let existingRow = null;
+  document.querySelectorAll('#costItemsList .cost-item-row').forEach(row => {
+    const desc = row.querySelector('.cost-item-desc').value.trim().toLowerCase();
+    if (desc.startsWith('handling')) existingRow = row;
+  });
+  if (existingRow) {
+    const oldAmt = existingRow.querySelector('.cost-item-amt').value;
+    if (!confirm(`Existing handling entry found (RM ${oldAmt}).\nReplace with new amount (${fmtRM(amt)})?`)) return;
+    existingRow.remove();
+  }
+  _addCostItemRow(handlingDescription(), amt);
+  _updateCostTotal();
+}
+
+// Edit fees modal
+function openHandlingRatesModal() {
+  const cats = getHandlingFees();
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  document.getElementById('handlingRatesList').innerHTML = cats.map((c, i) => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <span style="flex:1;color:#e0e0e0;font-size:12px;min-width:0">${esc(c.name)}</span>
+      <span style="color:#aaa;font-size:11px">RM</span>
+      <input id="hfee-${i}" type="number" min="0" step="1" value="${c.fee}"
+        style="width:70px;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:6px 8px;font-size:12px;text-align:right">
+    </div>`).join('');
+  document.getElementById('handlingRatesBg').classList.add('open');
+}
+function closeHandlingRatesModal() {
+  document.getElementById('handlingRatesBg').classList.remove('open');
+}
+function saveHandlingRatesModal() {
+  const cats = getHandlingFees();
+  cats.forEach((c, i) => {
+    const v = parseFloat(document.getElementById(`hfee-${i}`).value);
+    if (!isNaN(v) && v >= 0) c.fee = v;
+  });
+  saveHandlingFees(cats);
+  renderHandlingRows();
+  closeHandlingRatesModal();
+}
 
 // ---- Saved delivery sites ----
 // Keyed by lower-cased site name. A site is independent of any customer —
@@ -4206,6 +4376,7 @@ function saveCostModal() {
 
   // Delivery destination lives on the invoice — a site is per-delivery, not per-customer
   inv.deliverTo = currentDeliverTo;
+  inv.handling = currentHandling.filter(h => h.cat && h.qty > 0);
   if (currentSiteLoc && typeof currentSiteLoc.lat === 'number') inv.siteLocation = currentSiteLoc;
 
   inv.costItems = items;

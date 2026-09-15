@@ -3007,7 +3007,7 @@ async function calculateRouteDistance() {
       }
       hint.textContent = `Finding ${cust}…`;
       const r = await resolveCustomerLocation(cust, m => { hint.textContent = `${cust}: ${m}`; });
-      if (!r) { autoFailed.push(cust + (lastAiError ? ` — ${lastAiError}` : '')); continue; }
+      if (!r) { autoFailed.push(cust + ' — ' + lookupTraceText().join('; ')); continue; }
       const km = await officeRoadKm(r.lat, r.lng);
       const key = cust.toLowerCase().trim();
       const prev = cache[key] || {};
@@ -3664,12 +3664,15 @@ const MY_CITIES = [
 // One cascade used by both the 🔍 Find button and Calculate Route:
 // Google Places → OpenStreetMap by company name → city embedded in the name → AI city.
 // Returns { lat, lng, label, source, approx } or null.
+let lastNominatimError = '';
 async function nominatimLookup(q) {
+  lastNominatimError = '';
   try {
     const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=3&countrycodes=my`, { headers: { 'Accept-Language': 'en' } });
+    if (!r.ok) { lastNominatimError = 'HTTP ' + r.status; return []; }
     const d = await r.json();
     return Array.isArray(d) ? d : [];
-  } catch(e) { return []; }
+  } catch(e) { lastNominatimError = 'request blocked (' + e.message + ')'; return []; }
 }
 
 // One-way road distance from the office, via OSRM. null if routing fails.
@@ -3692,12 +3695,22 @@ function cityFromCompanyName(name) {
 
 // Why the last AI lookup failed, so the UI can say more than "AI failed"
 let lastAiError = '';
+// One line per lookup source tried, for the failure message
+let lookupTrace = [];
+
+// Full account of what each lookup source returned, for a failure message
+function lookupTraceText() {
+  const lines = lookupTrace.slice();
+  if (lastAiError) lines.push('AI: ' + lastAiError);
+  return lines;
+}
 
 async function resolveCustomerLocation(name, onProgress) {
   const say = m => { if (onProgress) onProgress(m); };
   if (!name || !name.trim()) return null;
   const q = name.trim();
   lastAiError = '';
+  lookupTrace = [];
 
   // 1. Google Places — most reliable for Malaysian businesses
   if (getGoogleKey()) {
@@ -3707,6 +3720,9 @@ async function resolveCustomerLocation(name, onProgress) {
       const r = g.results[0];
       return { lat: r.lat, lng: r.lon, label: r.display_name, source: '🗺 Google' };
     }
+    lookupTrace.push('Google Places: ' + (g.error && g.error !== 'no-key' ? g.error : 'no match'));
+  } else {
+    lookupTrace.push('Google Places: skipped — no API key loaded on this computer');
   }
 
   // 2. OpenStreetMap on the full company name
@@ -3717,6 +3733,7 @@ async function resolveCustomerLocation(name, onProgress) {
              label: hits[0].display_name.split(',').slice(0, 3).join(',').trim(),
              source: '📍 OpenStreetMap' };
   }
+  lookupTrace.push('OpenStreetMap: ' + (lastNominatimError || 'no match'));
 
   // 3. City written into the company name, e.g. "(IPOH)" — city centre only
   const nameCity = cityFromCompanyName(q);
@@ -3727,6 +3744,9 @@ async function resolveCustomerLocation(name, onProgress) {
       return { lat: +hits[0].lat, lng: +hits[0].lon, label: nameCity,
                source: '📍 City from name', approx: true };
     }
+    lookupTrace.push(`City in name (${nameCity}): ` + (lastNominatimError || 'could not geocode'));
+  } else {
+    lookupTrace.push('City in name: none recognised');
   }
 
   // 4. Ask Claude which city the company is in — city centre only
@@ -3803,9 +3823,11 @@ async function lookupDistance() {
     }
   }
 
-  hintEl.innerHTML = (lastAiError ? `Lookup failed — ${lastAiError}.<br>` : 'Could not determine location. ') +
-    'Click 📍 and paste the Google Maps coordinates ' +
-    '(right-click the pin in Google Maps → click the coordinates to copy), or enter km manually.';
+  const trace = lookupTraceText();
+  hintEl.innerHTML = '<div style="color:#f39c12;margin-bottom:4px">Could not determine location:</div>' +
+    trace.map(t => `<div style="font-size:10px;color:#c9d8d6;padding-left:8px">• ${String(t).replace(/</g,'&lt;')}</div>`).join('') +
+    '<div style="margin-top:5px">Click 📍 and paste the Google Maps coordinates ' +
+    '(right-click the pin in Google Maps → click the coordinates to copy), or enter km manually.</div>';
   btn.textContent = '🔍 Find'; btn.disabled = false;
 }
 function addTransportToCost() {

@@ -534,6 +534,7 @@
   <div class="sync-status">
     <div class="sync-dot syncing" id="syncDot"></div>
     <span id="syncLabel">Connecting...</span>
+    <span id="buildStamp" title="App build — if support asks which version you have, read this out" style="margin-left:8px;font-size:10px;color:#556;font-family:Consolas,monospace;cursor:help"></span>
     <span id="resetHint" style="display:none;margin-left:6px;font-size:11px">· <a href="#" onclick="clearAndReload();return false" style="color:#e94560;text-decoration:underline">Reset &amp; Reload</a></span>
   </div>
   <input class="search-box" id="searchBox" type="text" placeholder="Search customer, invoice no..." oninput="renderList()">
@@ -1249,6 +1250,8 @@ function importTestData(input) {
   };
   reader.readAsText(file);
 }
+// Bumped on every deploy. Shown in the header so a user can read back which build they have.
+const APP_BUILD = '2026.09.15.0250';
 let session      = null;
 let sessionWatchInterval = null;
 let commentsId   = null;
@@ -6276,6 +6279,12 @@ function addComment() {
 
 // ---- Init ----
 function init() {
+  const bs = document.getElementById('buildStamp');
+  if (bs) bs.textContent = 'v' + APP_BUILD + (location.protocol === 'file:' ? ' · LOCAL FILE' : '');
+  if (location.protocol === 'file:') {
+    // Opened from disk: Google/Anthropic reject a null origin, so lookups will fail.
+    setTimeout(() => alert('This copy was opened as a local file (' + location.protocol + ').\n\nLocation lookup and AI features cannot work from a local file — please use the web address:\nhttps://hydrotech3386.github.io/iht-invoices/'), 800);
+  }
   initFirebase();
   try {
     const saved = localStorage.getItem(STORAGE_KEY);

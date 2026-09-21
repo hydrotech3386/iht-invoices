@@ -44,6 +44,9 @@
   .status-tab[data-status="unpaid"].active{background:#2980b9;border-color:#2980b9;color:#fff}
   .status-tab[data-status="partial"].active{background:#e67e22;border-color:#e67e22;color:#fff}
   .status-tab[data-status="overdue"].active{background:#e94560;border-color:#e94560;color:#fff}
+  .status-tab.nocost.active{background:#8e44ad;border-color:#8e44ad;color:#fff}
+  .status-tab.nocost .cnt{opacity:.75;font-weight:400;margin-left:3px}
+  body:not([data-role="management"]):not([data-role="admin"]) .status-tab.nocost{display:none!important}
   .status-tab[data-status="paid"].active{background:#27ae60;border-color:#27ae60;color:#fff}
   .filter-select{background:#0f3460;border:1px solid #333;color:#fff;border-radius:6px;padding:5px 10px;font-size:12px}
 
@@ -553,6 +556,7 @@
     <button class="status-tab" data-status="unpaid" onclick="setFilter('unpaid')">Unpaid</button>
     <button class="status-tab" data-status="partial" onclick="setFilter('partial')">Partial</button>
     <button class="status-tab" data-status="paid" onclick="setFilter('paid')">Paid</button>
+    <button class="status-tab nocost" id="noCostBtn" onclick="toggleNoCostFilter()" title="Only invoices with no cost recorded yet">No cost<span class="cnt" id="noCostCount"></span></button>
   </div>
   <select class="filter-select" id="salesmanFilter" onchange="renderSummary();renderList()">
     <option value="">All Agents</option>
@@ -1259,6 +1263,7 @@ let commTab         = 'summary';
 let dateAdjId       = null;
 let costReviewId    = null;
 let adjPendingFilter = false;
+let noCostFilter = false;   // admin/management: only invoices with no cost recorded
 let appSettings  = {};            // { telegramBotToken, claudeApiKey }
 let salesmanChatIds = {};         // { salesmanName: chatId }
 let roleChatIds    = {};         // { role: [chatId, ...] }
@@ -2070,6 +2075,7 @@ function getFilteredInvoices() {
     if (smF && inv.salesman!==smF) return false;
     if (mF && !(inv.invoiceDate||'').startsWith(mF)) return false;
     if (adjPendingFilter && !(inv.dateAdjReq && inv.dateAdjReq.status==='pending')) return false;
+    if (noCostFilter && totalCost(inv) > 0) return false;
     if (search) {
       const tp = totalPayable(inv);
       const hay = [inv.invoiceNo,inv.customer,inv.contact,inv.projectRef,inv.salesman,inv.notes,String(tp),tp.toFixed(2)].join(' ').toLowerCase();
@@ -2089,6 +2095,11 @@ function getFilteredInvoices() {
 
 function renderList() {
   const items = getFilteredInvoices();
+  const ncEl = document.getElementById('noCostCount');
+  if (ncEl) {
+    const n = items.filter(inv => totalCost(inv) <= 0).length;
+    ncEl.textContent = n ? ' (' + n + ')' : '';
+  }
   const sort = document.getElementById('sortFilter').value;
 
   const el = document.getElementById('invoiceList');
@@ -4483,6 +4494,7 @@ function describeFilters() {
   const search = (document.getElementById('searchBox').value || '').trim();
   if (search) parts.push('Search: "' + search + '"');
   if (adjPendingFilter) parts.push('Pending date adjustments only');
+  if (noCostFilter) parts.push('No cost recorded');
   return parts.join('   ·   ');
 }
 function exportFileStem() {
@@ -5456,6 +5468,11 @@ function rejectCostReview() {
   closeCostReviewMgmt();
 }
 
+function toggleNoCostFilter() {
+  noCostFilter = !noCostFilter;
+  document.getElementById('noCostBtn').classList.toggle('active', noCostFilter);
+  renderSummary(); renderList();
+}
 function toggleAdjPendingFilter() {
   adjPendingFilter = !adjPendingFilter;
   document.getElementById('adjNotifyBtn').classList.toggle('active', adjPendingFilter);

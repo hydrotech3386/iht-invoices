@@ -664,15 +664,6 @@
       </div>
     </div>
 
-    <div class="section-divider" id="commShareDivider">Commission Sharing</div>
-    <div class="form-row" id="commShareRow">
-      <label>Project category <span style="color:#7f97b3;font-weight:400">— splits the commission between the people who delivered it</span></label>
-      <select id="fCommScheme" onchange="onCommSchemeChange()">
-        <option value="">None — full commission to the agent</option>
-      </select>
-      <div id="commShareHint" style="font-size:11px;color:#7f97b3;margin-top:5px"></div>
-    </div>
-
     <div class="section-divider">Notes</div>
     <div class="form-row">
       <label>Notes / Remarks</label>
@@ -777,6 +768,38 @@
     </div>
     <div style="padding:8px 16px 10px;border-top:1px solid #1a3a6a;display:flex;justify-content:flex-end;align-items:center">
       <button class="btn-cancel" onclick="closeCacheManager()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Commission Tagging Modal -->
+<div class="modal-bg" id="bulkTagBg" style="z-index:9800">
+  <div class="modal" style="max-width:640px;padding:0;overflow:hidden">
+    <div style="padding:12px 16px;border-bottom:1px solid #1a3a6a;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-weight:700;font-size:15px;color:#fff">🤝 Set Commission Sharing</div>
+      <button onclick="closeBulkCommTag()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:20px;line-height:1">✕</button>
+    </div>
+    <div style="padding:8px 14px 4px;font-size:11px;color:#888">Tag invoices issued before sharing existed. This only sets how each invoice's commission is divided — no commission total changes.</div>
+    <div style="padding:8px 14px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <select id="bulkTagMonth" onchange="renderBulkCommTag()" style="background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:6px 8px;font-size:12px"></select>
+      <select id="bulkTagAgent" onchange="renderBulkCommTag()" style="background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:6px 8px;font-size:12px"></select>
+      <input type="text" id="bulkTagSearch" oninput="renderBulkCommTag()" placeholder="Search invoice, customer, ref, notes…" style="flex:1;min-width:150px;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:6px 8px;font-size:12px">
+    </div>
+    <div style="padding:0 14px 6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#aaa;cursor:pointer">
+        <input type="checkbox" id="bulkTagUntaggedOnly" checked onchange="renderBulkCommTag()" style="cursor:pointer"> Untagged only
+      </label>
+      <span id="bulkTagCount" style="font-size:11px;color:#5dfc8d"></span>
+      <span style="flex:1"></span>
+      <button onclick="bulkTagToggleAll(true)" style="background:none;border:1px solid #1a3a6a;border-radius:4px;color:#4fc3f7;padding:3px 10px;font-size:11px;cursor:pointer">Select all</button>
+      <button onclick="bulkTagToggleAll(false)" style="background:none;border:1px solid #1a3a6a;border-radius:4px;color:#aaa;padding:3px 10px;font-size:11px;cursor:pointer">Clear</button>
+    </div>
+    <div id="bulkTagList" style="max-height:320px;overflow-y:auto;padding:0 14px 10px"></div>
+    <div style="padding:10px 16px;border-top:1px solid #1a3a6a;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:12px;color:#aaa;flex-shrink:0">Set selected to</span>
+      <select id="bulkTagScheme" style="flex:1;min-width:140px;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:6px 8px;font-size:12px"></select>
+      <button class="btn-confirm" onclick="applyBulkCommTag()" style="padding:6px 14px;font-size:12px">Apply</button>
+      <button class="btn-cancel" onclick="closeBulkCommTag()" style="padding:6px 14px;font-size:12px">Close</button>
     </div>
   </div>
 </div>
@@ -903,6 +926,14 @@
     <div class="cost-total-row">
       <span>Total Cost</span>
       <strong id="costModalTotal">RM 0.00</strong>
+    </div>
+    <div id="commShareSection">
+      <div class="section-divider" style="margin-top:14px">Commission Sharing</div>
+      <div style="font-size:11px;color:#7f97b3;margin-bottom:6px">Project category — divides this invoice's commission between the people who delivered it.</div>
+      <select id="fCommScheme" onchange="onCommSchemeChange()" style="width:100%;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:7px 10px;font-size:13px">
+        <option value="">None — full commission to the agent</option>
+      </select>
+      <div id="commShareHint" style="font-size:11px;color:#7f97b3;margin-top:5px;min-height:15px"></div>
     </div>
     <div class="section-divider" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
       <span>Transport Cost</span>
@@ -1051,6 +1082,8 @@
     <div class="comm-tabs">
       <button class="comm-tab active" id="commTabSummary" onclick="switchCommTab('summary')">Summary</button>
       <button class="comm-tab" id="commTabCommission" onclick="switchCommTab('commission')">Commission</button>
+      <span style="flex:1"></span>
+      <button id="bulkTagBtn" onclick="openBulkCommTag()" style="background:#8e44ad;border:none;color:#fff;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">🤝 Set Sharing</button>
     </div>
     <div class="month-sel-row">
       <select id="commissionMonth" onchange="renderCommission()"></select>
@@ -2373,7 +2406,6 @@ function openInvoiceModal(id) {
     document.getElementById('fCost').value = inv.cost ? formatNumber(inv.cost) : '';
     document.getElementById('fNotes').value = inv.notes||'';
     renderSalesmanChips(inv.salesman||'');
-    renderCommSchemeField(inv.commScheme||'');
   } else {
     document.getElementById('invoiceModalTitle').textContent = 'Add Invoice';
     document.getElementById('fInvNo').value = '';
@@ -2386,7 +2418,6 @@ function openInvoiceModal(id) {
     document.getElementById('fCost').value = '';
     document.getElementById('fNotes').value = '';
     renderSalesmanChips('');
-    renderCommSchemeField('');
   }
   document.getElementById('invoiceModalBg').classList.add('open');
   setTimeout(() => document.getElementById('fInvNo').focus(), 100);
@@ -2413,7 +2444,6 @@ function saveInvoice() {
     amount,
     sst: 0,
     salesman: getSelectedSalesman(),
-    commScheme: document.getElementById('fCommScheme').value || '',
     notes: document.getElementById('fNotes').value.trim(),
     updatedAt: Date.now()
   };
@@ -2426,7 +2456,11 @@ function saveInvoice() {
       data.createdAt = state.invoices[idx].createdAt;
       data.cost = canEditCost() ? parseAmountField('fCost') : (state.invoices[idx].cost||0);
       data.costItems = state.invoices[idx].costItems || [];
-      state.invoices[idx] = data;
+      // Overlay the form fields onto the existing record. Assigning `data`
+      // directly would drop everything the form does not manage — credit
+      // notes, comments, adjustment and cost-review requests, transport,
+      // site and handling details.
+      state.invoices[idx] = Object.assign({}, state.invoices[idx], data);
     }
   } else {
     data.id = uid();
@@ -2685,6 +2719,7 @@ function openCostModal(id) {
   populateVehicleDropdowns();
   initTransportCalc(inv.customer);
   initHandling(inv);
+  renderCommSchemeField(inv.commScheme || '');
   document.getElementById('costModalBg').classList.add('open');
   setTimeout(() => { const f = list.querySelector('.cost-item-desc'); if (f) f.focus(); }, 100);
 }
@@ -4492,6 +4527,7 @@ function saveCostModal() {
   }
 
   // Delivery destination lives on the invoice — a site is per-delivery, not per-customer
+  inv.commScheme = document.getElementById('fCommScheme').value || '';
   inv.deliverTo = currentDeliverTo;
   inv.handling = currentHandling.filter(h => h.cat && h.qty > 0);
   if (currentSiteLoc && typeof currentSiteLoc.lat === 'number') inv.siteLocation = currentSiteLoc;
@@ -4905,6 +4941,8 @@ function openCommission() {
   const curSm = smSel.value;
   smSel.innerHTML = '<option value="">All Agents</option>' +
     state.salesmen.map(s => `<option value="${s}"${s===curSm?' selected':''}>${s}</option>`).join('');
+  const btBtn = document.getElementById('bulkTagBtn');
+  if (btBtn) btBtn.style.display = canEditCost() ? '' : 'none';
   document.getElementById('commTabSummary').classList.toggle('active', commTab==='summary');
   document.getElementById('commTabCommission').classList.toggle('active', commTab==='commission');
   document.getElementById('commissionBg').classList.add('open');
@@ -5084,12 +5122,10 @@ function commShareLabel(entry) {
 // set this — it decides who gets paid, so it sits with the other cost controls.
 function renderCommSchemeField(current) {
   const sel = document.getElementById('fCommScheme');
-  const row = document.getElementById('commShareRow');
-  const div = document.getElementById('commShareDivider');
+  const sect = document.getElementById('commShareSection');
   if (!sel) return;
-  const allowed = canEditCost();
-  if (row) row.style.display = allowed ? '' : 'none';
-  if (div) div.style.display = allowed ? '' : 'none';
+  // Account issues invoices; only admin/management decide how commission splits.
+  if (sect) sect.style.display = canEditCost() ? '' : 'none';
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   sel.innerHTML = '<option value="">None — full commission to the agent</option>' +
     getCommSchemes().map(sc =>
@@ -5103,7 +5139,8 @@ function onCommSchemeChange() {
   if (!sel || !hint) return;
   const sc = commSchemeById(sel.value);
   if (!sc) { hint.textContent = 'The agent receives the whole commission.'; return; }
-  const agent = (typeof getSelectedSalesman === 'function' ? getSelectedSalesman() : '') || '';
+  const inv = state.invoices.find(i => i.id === costModalId);
+  const agent = (inv && inv.salesman) || '';
   // Show the split exactly as it will be paid, including the combine and
   // no-agent rules, so it is obvious before saving.
   const parts = splitCommission({ salesman: agent, commScheme: sc.id }, 100);
@@ -5112,6 +5149,100 @@ function onCommSchemeChange() {
   const unpaid = 100 - parts.reduce((s, p) => s + p.pct, 0);
   hint.innerHTML = txt + (unpaid > 0
     ? ` <span style="color:#f39c12">· ${unpaid}% unassigned (no agent on this invoice)</span>` : '');
+}
+
+// ---- Bulk commission-sharing tagging ----
+// Invoices issued before sharing existed all read "None". Opening each one to
+// set a category is impractical, so this tags them in batches.
+let _bulkTagScheme = '';
+function openBulkCommTag() {
+  const sel = document.getElementById('bulkTagScheme');
+  const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  sel.innerHTML = getCommSchemes().map(sc =>
+    `<option value="${esc(sc.id)}">${esc(sc.name)}</option>`).join('') +
+    '<option value="">None — clear sharing</option>';
+  const mSel = document.getElementById('bulkTagMonth');
+  const months = new Set();
+  state.invoices.forEach(inv => { const m = (inv.invoiceDate || '').slice(0, 7); if (m) months.add(m); });
+  mSel.innerHTML = '<option value="">All months</option>' +
+    [...months].sort().reverse().map(m => {
+      const [y, mo] = m.split('-');
+      return `<option value="${m}">${new Date(y, mo - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' })}</option>`;
+    }).join('');
+  const aSel = document.getElementById('bulkTagAgent');
+  aSel.innerHTML = '<option value="">All agents</option>' +
+    (state.salesmen || []).map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('') +
+    '<option value="__none__">(No agent)</option>';
+  document.getElementById('bulkTagSearch').value = '';
+  document.getElementById('bulkTagBg').classList.add('open');
+  renderBulkCommTag();
+}
+function closeBulkCommTag() { document.getElementById('bulkTagBg').classList.remove('open'); }
+
+function bulkTagMatches() {
+  const m = document.getElementById('bulkTagMonth').value;
+  const a = document.getElementById('bulkTagAgent').value;
+  const q = (document.getElementById('bulkTagSearch').value || '').toLowerCase().trim();
+  const only = document.getElementById('bulkTagUntaggedOnly').checked;
+  return state.invoices.filter(inv => {
+    if (m && !(inv.invoiceDate || '').startsWith(m)) return false;
+    if (a === '__none__') { if (inv.salesman) return false; }
+    else if (a && inv.salesman !== a) return false;
+    if (only && inv.commScheme) return false;
+    if (q) {
+      const hay = [inv.invoiceNo, inv.customer, inv.projectRef, inv.notes].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  }).sort((x, y) => (y.invoiceDate || '').localeCompare(x.invoiceDate || ''));
+}
+function renderBulkCommTag() {
+  const list = bulkTagMatches();
+  const el = document.getElementById('bulkTagList');
+  const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  if (!list.length) {
+    el.innerHTML = '<div style="color:#7f97b3;font-size:13px;text-align:center;padding:20px">No invoices match.</div>';
+  } else {
+    el.innerHTML = list.slice(0, 400).map(inv => {
+      const tag = inv.commScheme
+        ? `<span style="color:#b07cd6;font-size:10px;font-weight:700;flex-shrink:0">${esc(commSchemeName(inv.commScheme))}</span>`
+        : `<span style="color:#556;font-size:10px;flex-shrink:0">none</span>`;
+      return `<label style="display:flex;align-items:center;gap:8px;padding:5px 4px;border-bottom:1px solid #0f1e35;font-size:12px;cursor:pointer">
+        <input type="checkbox" class="bulk-tag-cb" data-id="${inv.id}" checked style="flex-shrink:0;cursor:pointer">
+        <span style="color:#4fc3f7;min-width:72px;flex-shrink:0">${esc(inv.invoiceNo || '—')}</span>
+        <span style="color:#e0e0e0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(inv.customer || '—')}</span>
+        <span style="color:#7f97b3;font-size:10px;flex-shrink:0">${esc(inv.salesman || 'no agent')}</span>
+        ${tag}
+      </label>`;
+    }).join('') + (list.length > 400
+      ? `<div style="color:#f39c12;font-size:11px;padding:8px 4px">Showing the first 400 of ${list.length}. Narrow the filters to reach the rest.</div>` : '');
+  }
+  document.getElementById('bulkTagCount').textContent =
+    list.length + ' invoice' + (list.length === 1 ? '' : 's') + ' matched';
+}
+function bulkTagToggleAll(on) {
+  document.querySelectorAll('#bulkTagList .bulk-tag-cb').forEach(cb => cb.checked = on);
+}
+function applyBulkCommTag() {
+  const ids = Array.from(document.querySelectorAll('#bulkTagList .bulk-tag-cb:checked')).map(cb => cb.dataset.id);
+  if (!ids.length) { alert('No invoices selected.'); return; }
+  const scheme = document.getElementById('bulkTagScheme').value;
+  const label = scheme ? commSchemeName(scheme) : 'None (no sharing)';
+  if (!confirm(`Set commission sharing to "${label}" on ${ids.length} invoice(s)?\n\nThis changes how their commission is divided. It does not change any commission total.`)) return;
+  let n = 0;
+  ids.forEach(id => {
+    const inv = state.invoices.find(i => i.id === id);
+    if (!inv) return;
+    if ((inv.commScheme || '') === scheme) return;
+    inv.commScheme = scheme;
+    inv.updatedAt = Date.now();
+    n++;
+  });
+  persistState();
+  renderList();
+  renderBulkCommTag();
+  if (document.getElementById('commissionBg').classList.contains('open')) renderCommission();
+  alert(`✓ ${n} invoice(s) updated.`);
 }
 
 // ---- Commission sharing settings (management) ----

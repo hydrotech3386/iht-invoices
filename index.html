@@ -659,6 +659,15 @@
       </div>
     </div>
 
+    <div class="section-divider" id="commShareDivider">Commission Sharing</div>
+    <div class="form-row" id="commShareRow">
+      <label>Project category <span style="color:#7f97b3;font-weight:400">— splits the commission between the people who delivered it</span></label>
+      <select id="fCommScheme" onchange="onCommSchemeChange()">
+        <option value="">None — full commission to the agent</option>
+      </select>
+      <div id="commShareHint" style="font-size:11px;color:#7f97b3;margin-top:5px"></div>
+    </div>
+
     <div class="section-divider">Notes</div>
     <div class="form-row">
       <label>Notes / Remarks</label>
@@ -763,6 +772,22 @@
     </div>
     <div style="padding:8px 16px 10px;border-top:1px solid #1a3a6a;display:flex;justify-content:flex-end;align-items:center">
       <button class="btn-cancel" onclick="closeCacheManager()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Commission Sharing Modal -->
+<div class="modal-bg" id="commSchemesBg" style="z-index:9700">
+  <div class="modal" style="max-width:520px;padding:0;overflow:hidden">
+    <div style="padding:12px 16px;border-bottom:1px solid #1a3a6a;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-weight:700;font-size:15px;color:#fff">🤝 Commission Sharing</div>
+      <button onclick="closeCommSchemesModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:20px;line-height:1">✕</button>
+    </div>
+    <div style="padding:8px 14px 4px;font-size:11px;color:#888">The commission total is unchanged — this only sets how it is divided. Invoices already paid keep what they were calculated at until the page is reloaded.</div>
+    <div id="commSchemesList" style="max-height:420px;overflow-y:auto;padding:8px 14px 10px"></div>
+    <div style="padding:8px 16px 10px;border-top:1px solid #1a3a6a;display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn-cancel" onclick="closeCommSchemesModal()">Cancel</button>
+      <button class="btn-confirm" onclick="saveCommSchemesModal()">Save</button>
     </div>
   </div>
 </div>
@@ -1696,6 +1721,9 @@ function onLoggedIn() {
         localStorage.setItem(TRANSPORT_CACHE_KEY, JSON.stringify(appSettings.transportCache));
       }
       // Sync saved delivery sites from Firebase → localStorage
+      if (Array.isArray(appSettings.commSchemes) && appSettings.commSchemes.length) {
+        localStorage.setItem(COMM_SCHEMES_KEY, JSON.stringify(appSettings.commSchemes));
+      }
       if (Array.isArray(appSettings.handlingFees) && appSettings.handlingFees.length) {
         localStorage.setItem(HANDLING_KEY, JSON.stringify(appSettings.handlingFees));
       }
@@ -2297,6 +2325,7 @@ function openInvoiceModal(id) {
     document.getElementById('fCost').value = inv.cost ? formatNumber(inv.cost) : '';
     document.getElementById('fNotes').value = inv.notes||'';
     renderSalesmanChips(inv.salesman||'');
+    renderCommSchemeField(inv.commScheme||'');
   } else {
     document.getElementById('invoiceModalTitle').textContent = 'Add Invoice';
     document.getElementById('fInvNo').value = '';
@@ -2309,6 +2338,7 @@ function openInvoiceModal(id) {
     document.getElementById('fCost').value = '';
     document.getElementById('fNotes').value = '';
     renderSalesmanChips('');
+    renderCommSchemeField('');
   }
   document.getElementById('invoiceModalBg').classList.add('open');
   setTimeout(() => document.getElementById('fInvNo').focus(), 100);
@@ -2335,6 +2365,7 @@ function saveInvoice() {
     amount,
     sst: 0,
     salesman: getSelectedSalesman(),
+    commScheme: document.getElementById('fCommScheme').value || '',
     notes: document.getElementById('fNotes').value.trim(),
     updatedAt: Date.now()
   };
@@ -4918,122 +4949,312 @@ function saveCostInline(invId, rawVal) {
   persistState();
 }
 
+// ---- Commission sharing ----
+// Some projects are delivered by more than one person, so the commission the
+// invoice earns is split between them by role. The commission total itself is
+// unchanged — it is still profit x payment-collection rate; only its division
+// is new.
+const COMM_SCHEMES_KEY = 'iht_comm_schemes';
+const COMM_SCHEME_DEFAULTS = [
+  { id: 'lap', name: 'M&E (LAP)', roles: [
+    { key: 'salesman',    label: 'Salesman',        pct: 60, person: '' },   // '' = whoever the invoice's agent is
+    { key: 'facilitator', label: 'LAP Facilitator', pct: 20, person: 'Helmi' },
+    { key: 'service',     label: 'Service Head',    pct: 20, person: 'Faris' },
+  ] },
+  { id: 'beo', name: 'BEO', roles: [
+    { key: 'salesman',    label: 'Salesman',       pct: 60, person: '' },
+    { key: 'facilitator', label: 'EO Facilitator', pct: 30, person: 'Kamal' },
+    { key: 'service',     label: 'Service Head',   pct: 10, person: 'Faris' },
+  ] },
+];
+function getCommSchemes() {
+  try {
+    const s = JSON.parse(localStorage.getItem(COMM_SCHEMES_KEY) || 'null');
+    if (Array.isArray(s) && s.length) return s;
+  } catch (e) {}
+  return JSON.parse(JSON.stringify(COMM_SCHEME_DEFAULTS));
+}
+function saveCommSchemes(list) {
+  localStorage.setItem(COMM_SCHEMES_KEY, JSON.stringify(list));
+  syncSettingToFirebase('commSchemes', list);
+}
+function commSchemeById(id) {
+  if (!id) return null;
+  return getCommSchemes().find(s => s.id === id) || null;
+}
+function commSchemeName(id) {
+  const s = commSchemeById(id);
+  return s ? s.name : '';
+}
+
+// Divide one invoice's commission between the people who earned it.
+// Returns [{ person, roles:[label], pct, amount }].
+//   - No scheme: the whole amount goes to the invoice's agent, as before.
+//   - One person holding two roles gets the combined percentage.
+//   - No agent on the invoice: the salesman share is simply not paid; the
+//     facilitator and service head still receive theirs.
+function splitCommission(inv, amount) {
+  const scheme = commSchemeById(inv && inv.commScheme);
+  const agent = (inv && inv.salesman) || '';
+  if (!scheme) {
+    return [{ person: agent || '(No agent)', roles: [], pct: 100, amount: amount }];
+  }
+  const byPerson = {};
+  const order = [];
+  scheme.roles.forEach(r => {
+    const person = (r.key === 'salesman') ? agent : (r.person || '');
+    if (!person) return;                     // unfilled role earns nothing
+    if (!byPerson[person]) { byPerson[person] = { person, roles: [], pct: 0, amount: 0 }; order.push(person); }
+    byPerson[person].roles.push(r.label);
+    byPerson[person].pct += (Number(r.pct) || 0);
+  });
+  const out = order.map(p => byPerson[p]);
+  if (!out.length) return [];
+  out.forEach(e => { e.amount = Math.round(amount * e.pct) / 100; });
+  // When the shares do cover the whole commission, give any rounding
+  // remainder to the largest share so the parts add back to the total.
+  const totalPct = out.reduce((s, e) => s + e.pct, 0);
+  if (totalPct === 100) {
+    const assigned = out.reduce((s, e) => s + e.amount, 0);
+    const diff = Math.round((amount - assigned) * 100) / 100;
+    if (diff) {
+      let big = out[0];
+      out.forEach(e => { if (e.pct > big.pct) big = e; });
+      big.amount = Math.round((big.amount + diff) * 100) / 100;
+    }
+  }
+  return out;
+}
+function commShareLabel(entry) {
+  if (!entry.roles.length) return '';
+  return entry.roles.join(' + ') + ' ' + entry.pct + '%';
+}
+
+// Commission sharing picker in the invoice modal. Only admin and management
+// set this — it decides who gets paid, so it sits with the other cost controls.
+function renderCommSchemeField(current) {
+  const sel = document.getElementById('fCommScheme');
+  const row = document.getElementById('commShareRow');
+  const div = document.getElementById('commShareDivider');
+  if (!sel) return;
+  const allowed = canEditCost();
+  if (row) row.style.display = allowed ? '' : 'none';
+  if (div) div.style.display = allowed ? '' : 'none';
+  const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  sel.innerHTML = '<option value="">None — full commission to the agent</option>' +
+    getCommSchemes().map(sc =>
+      `<option value="${esc(sc.id)}" ${sc.id === current ? 'selected' : ''}>${esc(sc.name)}</option>`).join('');
+  sel.value = current || '';
+  onCommSchemeChange();
+}
+function onCommSchemeChange() {
+  const sel = document.getElementById('fCommScheme');
+  const hint = document.getElementById('commShareHint');
+  if (!sel || !hint) return;
+  const sc = commSchemeById(sel.value);
+  if (!sc) { hint.textContent = 'The agent receives the whole commission.'; return; }
+  const agent = (typeof getSelectedSalesman === 'function' ? getSelectedSalesman() : '') || '';
+  // Show the split exactly as it will be paid, including the combine and
+  // no-agent rules, so it is obvious before saving.
+  const parts = splitCommission({ salesman: agent, commScheme: sc.id }, 100);
+  if (!parts.length) { hint.textContent = 'No one is assigned to these roles yet.'; return; }
+  const txt = parts.map(p => `${p.person} ${p.pct}%`).join('  ·  ');
+  const unpaid = 100 - parts.reduce((s, p) => s + p.pct, 0);
+  hint.innerHTML = txt + (unpaid > 0
+    ? ` <span style="color:#f39c12">· ${unpaid}% unassigned (no agent on this invoice)</span>` : '');
+}
+
+// ---- Commission sharing settings (management) ----
+function openCommSchemesModal() {
+  const schemes = getCommSchemes();
+  const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const people = Array.isArray(state.salesmen) ? state.salesmen : [];
+  document.getElementById('commSchemesList').innerHTML = schemes.map((sc, si) => {
+    const rows = sc.roles.map((r, ri) => {
+      const isAgent = r.key === 'salesman';
+      const personCell = isAgent
+        ? `<span style="flex:1;color:#7f97b3;font-size:12px;font-style:italic">the invoice's agent</span>`
+        : `<select id="cs-${si}-${ri}-person" style="flex:1;min-width:0;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:5px 8px;font-size:12px">
+             <option value="">— none —</option>
+             ${people.map(p => `<option value="${esc(p)}" ${p === r.person ? 'selected' : ''}>${esc(p)}</option>`).join('')}
+           </select>`;
+      return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="width:120px;flex-shrink:0;color:#e0e0e0;font-size:12px">${esc(r.label)}</span>
+        ${personCell}
+        <input id="cs-${si}-${ri}-pct" type="number" min="0" max="100" step="1" value="${Number(r.pct) || 0}"
+          style="width:62px;flex-shrink:0;background:#0a1628;border:1px solid #1a3a6a;border-radius:5px;color:#e0e0e0;padding:5px 8px;font-size:12px;text-align:right">
+        <span style="color:#aaa;font-size:12px;flex-shrink:0">%</span>
+      </div>`;
+    }).join('');
+    const tot = sc.roles.reduce((s, r) => s + (Number(r.pct) || 0), 0);
+    return `<div style="border:1px solid #1a3a6a;border-radius:6px;padding:10px 12px;margin-bottom:10px;background:#071628">
+      <div style="font-size:12px;font-weight:700;color:#4fc3f7;margin-bottom:8px">${esc(sc.name)}</div>
+      ${rows}
+      <div id="cs-${si}-total" style="font-size:11px;color:${tot === 100 ? '#7f97b3' : '#f39c12'};text-align:right">Total ${tot}%</div>
+    </div>`;
+  }).join('');
+  document.getElementById('commSchemesBg').classList.add('open');
+}
+function closeCommSchemesModal() {
+  document.getElementById('commSchemesBg').classList.remove('open');
+}
+function saveCommSchemesModal() {
+  const schemes = getCommSchemes();
+  schemes.forEach((sc, si) => {
+    sc.roles.forEach((r, ri) => {
+      const pctEl = document.getElementById(`cs-${si}-${ri}-pct`);
+      if (pctEl) { const v = parseFloat(pctEl.value); if (!isNaN(v) && v >= 0) r.pct = v; }
+      const pEl = document.getElementById(`cs-${si}-${ri}-person`);
+      if (pEl) r.person = pEl.value;
+    });
+  });
+  const bad = schemes.find(sc => sc.roles.reduce((s, r) => s + (Number(r.pct) || 0), 0) !== 100);
+  if (bad && !confirm(`"${bad.name}" percentages add up to ${bad.roles.reduce((s,r)=>s+(Number(r.pct)||0),0)}%, not 100%.\n\nSave anyway?`)) return;
+  saveCommSchemes(schemes);
+  closeCommSchemesModal();
+  if (document.getElementById('commissionBg').classList.contains('open')) renderCommission();
+}
+
 function renderCommissionPage() {
   const month = document.getElementById('commissionMonth').value;
   const content = document.getElementById('commissionContent');
   if (!month) { content.innerHTML='<div class="report-empty">No data.</div>'; return; }
 
   const smF = document.getElementById('commissionSalesmanFilter').value;
-  const invs = state.invoices.filter(inv => {
-    if (!matchesPeriod(inv, month)) return false;
-    if (smF && inv.salesman !== smF) return false;
-    return true;
-  });
+  const invs = state.invoices.filter(inv => matchesPeriod(inv, month));
   if (!invs.length) { content.innerHTML='<div class="report-empty">No invoices for this period.</div>'; return; }
 
-  const bySm = {};
+  // Group by the person who earns, not by the invoice's agent — on a shared
+  // invoice the facilitator and service head earn from it too.
+  const byPerson = {};   // person -> { person, invs: [ {inv, rows[], share, pct, roles} ] }
+  const seen = {};
   invs.forEach(inv => {
-    const key = inv.salesman || '(No agent)';
-    if (!bySm[key]) bySm[key] = [];
-    bySm[key].push(inv);
+    const total = (inv.amount || 0) + (inv.sst || 0);
+    const cost = totalCost(inv);
+    const hasCost = !!(inv.costItems && inv.costItems.length > 0) || inv.cost > 0;
+    const profit = hasCost ? Math.max(0, total - cost) : null;
+    const pays = inv.payments || [];
+
+    // Who earns from this invoice, and at what percentage
+    const parts = splitCommission(inv, 1);           // amounts ignored; we want person/pct
+    if (!parts.length) return;
+
+    parts.forEach(part => {
+      const key = part.person;
+      if (!byPerson[key]) byPerson[key] = { person: key, entries: [], total: 0 };
+      const rows = pays.map(p => {
+        const days = daysBetween(effectiveDate(inv), p.date);
+        const rate = commissionRate(days);
+        const fraction = total > 0 ? p.amount / total : 0;
+        const full = hasCost ? profit * fraction * rate : null;
+        const share = hasCost ? Math.round(full * part.pct) / 100 : null;
+        return { date: p.date, days, rate, full, share };
+      });
+      const entryTotal = rows.reduce((s, r) => s + (r.share || 0), 0);
+      byPerson[key].total += entryTotal;
+      byPerson[key].entries.push({ inv, total, cost, hasCost, profit, rows, part });
+      seen[inv.id] = true;
+    });
   });
 
-  const isAdmin = session && (session.role === 'admin' || session.role === 'management');
+  let people = Object.keys(byPerson).sort();
+  if (smF) people = people.filter(p => p === smF);
+  if (!people.length) { content.innerHTML='<div class="report-empty">No commission for this selection.</div>'; return; }
+
   let grandTotal = 0;
   let html = '';
 
-  Object.keys(bySm).sort().forEach(sm => {
-    const smInvs = bySm[sm];
-    let smTotal = 0;
+  people.forEach(person => {
+    const data = byPerson[person];
     let tbodyRows = '';
 
-    smInvs.forEach(inv => {
-      const total = (inv.amount || 0) + (inv.sst || 0);
-      const cost = totalCost(inv);
-      const hasCost = !!(inv.costItems && inv.costItems.length > 0) || inv.cost > 0;
-      const profit = hasCost ? Math.max(0, total - cost) : null;
-      const pays = inv.payments || [];
-      const effDate = effectiveDate(inv);
+    data.entries.forEach(e => {
+      const inv = e.inv;
       const adjNote = inv.adjustedDate ? `<div style="font-size:10px;margin-top:2px"><span class="adj-badge">ADJ</span><span style="color:#4fc3f7">${fmtDate(inv.adjustedDate)}</span></div>` : '';
-      const invNo = `<span style="color:#4fc3f7;font-weight:700;cursor:pointer;text-decoration:underline" onclick="goToInvoice('${inv.id}')" title="Go to invoice">${inv.invoiceNo||'—'}</span>${adjNote}`;
+      const schemeTag = inv.commScheme
+        ? `<div style="font-size:9px;margin-top:2px;color:#b07cd6;font-weight:700">${commSchemeName(inv.commScheme)}</div>` : '';
+      const invNo = `<span style="color:#4fc3f7;font-weight:700;cursor:pointer;text-decoration:underline" onclick="goToInvoice('${inv.id}')" title="Go to invoice">${inv.invoiceNo||'—'}</span>${adjNote}${schemeTag}`;
       const cust = `<span style="color:#aaa;max-width:130px;overflow:hidden;text-overflow:ellipsis;display:inline-block">${inv.customer||'—'}</span>`;
-      const costCell = hasCost
-        ? `<span style="color:#aaa">${cost > 0 ? fmtRM(cost) : '—'}</span>`
+      const costCell = e.hasCost
+        ? `<span style="color:#aaa">${e.cost > 0 ? fmtRM(e.cost) : '—'}</span>`
         : `<span style="color:#555;font-style:italic">—</span>`;
-      const profitCell = hasCost
-        ? `<span class="profit-val">${profit > 0 ? fmtRM(profit) : '—'}</span>`
+      const profitCell = e.hasCost
+        ? `<span class="profit-val">${e.profit > 0 ? fmtRM(e.profit) : '—'}</span>`
         : `<span style="color:#e67e22;font-size:11px;font-style:italic">Pending cost</span>`;
       const pendingComm = `<span style="color:#e67e22;font-size:11px;font-style:italic">Pending</span>`;
+      const shareCell = inv.commScheme
+        ? `<span style="color:#b07cd6;font-size:10px;font-weight:700">${commShareLabel(e.part)}</span>`
+        : `<span style="color:#555">—</span>`;
 
-      if (!pays.length) {
+      if (!e.rows.length) {
         tbodyRows += `<tr class="inv-row no-pay-row">
           <td>${invNo}</td><td>${cust}</td>
-          <td class="r">${fmtRM(total)}</td>
+          <td class="r">${fmtRM(e.total)}</td>
           <td class="r">${costCell}</td>
           <td class="r">${profitCell}</td>
           <td class="r" colspan="3" style="color:#555">No payments yet</td>
+          <td class="c">${shareCell}</td>
           <td class="r">—</td>
         </tr>`;
       } else {
-        pays.forEach((p, pi) => {
-          const days = daysBetween(effectiveDate(inv), p.date);
-          const rate = commissionRate(days);
-          const fraction = total > 0 ? p.amount / total : 0;
-          const comm = hasCost ? profit * fraction * rate : null;
-          if (hasCost) smTotal += comm;
-          const { pct: ratePct, cls: rateCls } = commissionRateLabel(days);
+        e.rows.forEach((r, pi) => {
+          const { pct: ratePct, cls: rateCls } = commissionRateLabel(r.days);
           const ratePill = `<span class="rate-pill ${rateCls}">${ratePct}</span>`;
-
+          const commCell = e.hasCost
+            ? `${fmtRM(r.share)}${inv.commScheme ? `<div style="font-size:9px;color:#666">of ${fmtRM(r.full)}</div>` : ''}`
+            : pendingComm;
           if (pi === 0) {
             tbodyRows += `<tr class="inv-row">
-              <td rowspan="${pays.length}">${invNo}</td>
-              <td rowspan="${pays.length}">${cust}</td>
-              <td class="r" rowspan="${pays.length}">${fmtRM(total)}</td>
-              <td class="r" rowspan="${pays.length}">${costCell}</td>
-              <td class="r" rowspan="${pays.length}">${profitCell}</td>
-              <td class="r" style="color:#aaa">${fmtDate(p.date)}</td>
-              <td class="c">${days}d</td>
+              <td rowspan="${e.rows.length}">${invNo}</td>
+              <td rowspan="${e.rows.length}">${cust}</td>
+              <td class="r" rowspan="${e.rows.length}">${fmtRM(e.total)}</td>
+              <td class="r" rowspan="${e.rows.length}">${costCell}</td>
+              <td class="r" rowspan="${e.rows.length}">${profitCell}</td>
+              <td class="r" style="color:#aaa">${fmtDate(r.date)}</td>
+              <td class="c">${r.days}d</td>
               <td class="c">${ratePill}</td>
-              <td class="r comm-val">${hasCost ? fmtRM(comm) : pendingComm}</td>
+              <td class="c" rowspan="${e.rows.length}">${shareCell}</td>
+              <td class="r comm-val">${commCell}</td>
             </tr>`;
           } else {
             tbodyRows += `<tr class="pay-row">
-              <td class="r" style="color:#aaa">${fmtDate(p.date)}</td>
-              <td class="c">${days}d</td>
+              <td class="r" style="color:#aaa">${fmtDate(r.date)}</td>
+              <td class="c">${r.days}d</td>
               <td class="c">${ratePill}</td>
-              <td class="r comm-val">${hasCost ? fmtRM(comm) : pendingComm}</td>
+              <td class="r comm-val">${commCell}</td>
             </tr>`;
           }
         });
       }
     });
 
-    grandTotal += smTotal;
+    grandTotal += data.total;
     html += `<div class="comm-section">
-      <div class="comm-section-hd">${sm} — ${smInvs.length} invoice(s)</div>
+      <div class="comm-section-hd">${person} — ${data.entries.length} invoice(s)</div>
       <table class="comm-detail-table">
         <thead><tr>
           <th>Invoice</th><th>Customer</th><th class="r">Amount</th>
           <th class="r">Cost</th><th class="r">Profit</th>
-          <th class="r">Pay Date</th><th class="c">Days</th><th class="c">Rate</th><th class="r">Commission</th>
+          <th class="r">Pay Date</th><th class="c">Days</th><th class="c">Rate</th>
+          <th class="c">Share</th><th class="r">Commission</th>
         </tr></thead>
         <tbody>${tbodyRows}</tbody>
         <tfoot><tr class="comm-total-row">
-          <td colspan="8" style="text-align:right">${sm} — Total Commission</td>
-          <td class="r">${fmtRM(smTotal)}</td>
+          <td colspan="9" style="text-align:right">${person} — Total Commission</td>
+          <td class="r">${fmtRM(data.total)}</td>
         </tr></tfoot>
       </table>
     </div>`;
   });
 
+  const invCount = Object.keys(seen).length;
   html += `<div class="grand-comm-box">
-    <span style="color:#5dfc8d;font-weight:700">${invs.length} invoice(s)</span>
+    <span style="color:#5dfc8d;font-weight:700">${invCount} invoice(s)</span>
     <span style="color:#5dfc8d;font-weight:700;font-size:16px">Total Commission: ${fmtRM(grandTotal)}</span>
   </div>`;
 
   content.innerHTML = html;
 }
-
 async function persistDateAdjReq(invId) {
   if (!fbReady) return;
   if (!state.invoices.find(i => i.id === invId)) return;
@@ -5805,6 +6026,14 @@ function renderUserMgmt() {
         <button onclick="saveGoogleApiKey()" style="background:#1a73e8;border:none;color:#fff;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap">Save Key</button>
       </div>
       <div style="font-size:11px;color:#555;margin-top:6px">${getGoogleKey() ? '✓ Google Places enabled — distance lookup active.' : 'Enables accurate distance lookup by company name.'}</div>
+    </div>
+    <div style="margin-bottom:16px;padding:12px;background:#0f3460;border-radius:8px;border:1px solid #1a3a5c">
+      <div style="font-size:11px;color:#aaa;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🤝 Commission Sharing</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span style="flex:1;min-width:180px;font-size:12px;color:#aaa">${getCommSchemes().map(sc => sc.name + ' (' + sc.roles.map(r => r.pct + '%').join('/') + ')').join('  ·  ')}</span>
+        <button onclick="openCommSchemesModal()" style="background:#8e44ad;border:none;color:#fff;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap">Edit Shares</button>
+      </div>
+      <div style="font-size:11px;color:#555;margin-top:6px">Who fills each role, and the percentage each receives.</div>
     </div>` : '';
 
   content.innerHTML = botSection + `<table class="user-table">
